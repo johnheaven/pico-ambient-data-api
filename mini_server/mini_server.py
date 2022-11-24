@@ -1,11 +1,15 @@
 class mini_server():
     # code for request/response adapted from https://www.raspberrypi.com/news/how-to-run-a-webserver-on-raspberry-pi-pico-w/
-    def __init__(self, secrets, rp2, not_found_response=None):
+    def __init__(self, secrets, rp2, not_found_response=None, device_uuid=None):
         import rp2
         
         self.secrets = secrets
         self.routes = []
         self.not_found_response = not_found_response
+
+        # if we have a function for finding UUID, then let's be havin' it!
+        self.device_uuid = device_uuid
+
         # wifi connection data/setup
         rp2.country('DE')
     
@@ -57,6 +61,8 @@ class mini_server():
                 print(f'Connected to: {secret["ssid"]}')
                 status = wlan.ifconfig()
                 print( 'ip = ' + status[0] )
+                if self.get_uuid_func is not None:
+                    print(f'UUID: {self.device_uuid}')
                 secrets_repeated = []
 
         # Open socket
@@ -78,6 +84,7 @@ class mini_server():
                 request = cl.recv(1024)
                 # print(request)
                 self.current_url = str(request.decode('utf-8'))
+                # only handle if request URI isn't empty
                 if self.current_url != '':
                     self.__handle_routes(cl)
                 cl.close()
