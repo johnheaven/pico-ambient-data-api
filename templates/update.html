@@ -1,0 +1,37 @@
+<html>
+    <body>
+        <main>
+            <h1>Update settings</h1>
+            <form action="" method="get">
+                <div>
+                    <label for="pico_name">Pico name</label>
+                    <input type="text" id="pico_name" name="pico_name" value="{pico_name!s}">
+                </div>
+                <h2>Wifi</h2>
+                <div>
+                    <label for="ssid">Wifi SSID</label>
+                    <input type="text" id="ssid" name="ssid" value="{ssid_name!s}">
+                </div>
+                <div>
+                    <label for="wifi_pass">Wifi password</label>
+                    <input type="text" id="wifi_pass" name="wifi_pass" value="{wifi_pass!s}">
+                </div>
+                <h2>Sensor type</h2>
+                <div>
+                    <div>
+                        <fieldset>
+                            <input type="radio" id="bme280" name="sensor" {bme280_checked!s} >
+                            <label for="bme280">BME280</label>
+                            <input type="radio" id="dht-22" name="sensor" {dht22_checked!s} >
+                            <label for="dht-22">DHT-22</label>
+                        </fieldset>
+                    </div>
+                </div>
+                <div>
+                    <input type="submit" value="Submit">
+                </div>
+            </form>
+        </main>
+    </body>
+
+</html>
