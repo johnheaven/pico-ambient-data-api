@@ -1,3 +1,5 @@
 settings.py
 .vscode
 .picowgo
+.DS_Store
+*.txt
