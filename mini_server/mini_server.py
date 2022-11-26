@@ -61,7 +61,7 @@ class mini_server():
                 print(f'Connected to: {secret["ssid"]}')
                 status = wlan.ifconfig()
                 print( 'ip = ' + status[0] )
-                if self.get_uuid_func is not None:
+                if self.device_uuid is not None:
                     print(f'UUID: {self.device_uuid}')
                 secrets_repeated = []
 
