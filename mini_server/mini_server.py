@@ -7,7 +7,6 @@ class mini_server():
         self.routes = []
         self.not_found_response = not_found_response
         self.current_route = ''
-        self.current_request_str = ''
         self.response_timeout = response_timeout
 
         # if we have a function for finding UUID, then let's be havin' it!
@@ -16,7 +15,7 @@ class mini_server():
         # wifi connection data/setup
         rp2.country('DE')
     
-    def connect_to_wifi(self):
+    def connect(self):
         import network
         import socket
         import utime
@@ -31,13 +30,16 @@ class mini_server():
         
         # get long list of (repeated) secrets
         secrets_repeated = self.secrets * 4
-        
+        current_ssid = ''
+
         # keep cycling through them until the list is empty
         while len(secrets_repeated) > 0:
             # get one of the ssid-password pairs
             secret = secrets_repeated.pop(0)
             # connect to the ssid
-            self.wlan.connect(secret['ssid'], secret['pw'])
+            self.wlan.connect(secret['ssid'], secret['wifi_pw'])
+            # save ssid name for later use
+            current_ssid = secret['ssid']
             # wait for connect or fail
             # max_wait is number of seconds to wait in total
             max_wait = 20
@@ -79,8 +81,9 @@ class mini_server():
         self.open_socket.bind(addr)
 
         print('listening on', addr)
+        self.listen(current_ssid)
 
-    def listen(self):
+    def listen(self, current_ssid):
         import machine
         from utime import sleep
         # Listen for connections
@@ -94,33 +97,30 @@ class mini_server():
                 cl.settimeout(0.5)
 
                 # receive up to 2048 bytes at a time and store the result as a string
-                responses = []
+                requests = []
                 while True:
                     try:
-                        print('DEBUG: Trying to receive data...')
+                        #print('DEBUG: Trying to receive data...')
                         data = cl.recv(128)
-                        print('DEBUG: Received data...')
-                        print(data)
+                        #print('DEBUG: Received data...\n' + data)
                     except:
-                        print('DEBUG: No more data...')
+                        #print('DEBUG: No more data...')
                         break
                     else:
-                        print('DEBUG: Appending data...')
-                        responses.append(data)
+                        #print('DEBUG: Appending data...')
+                        requests.append(data)
                 
-                print('DEBUG: FINISHED receiving data')
-                response = b''.join(responses)
-
-                self.current_request_str = str(response.decode('utf-8'))
+                #print('DEBUG: FINISHED receiving data')
+                request = b''.join(requests)
+                
+                # don't bother if there isn't a reasonable request
+                if len(request) == 0: continue
+                current_request_str = str(request.decode('utf-8'))
                     
-                print('DEBUG: request_string = \n')
-                for line in self.current_request_str.split('\n'): print(line)
-                #input('DEBUG: Press enter to continue')
-                with open('last_request.txt', 'w') as f:
-                    print(f.write(self.current_request_str))
+                print('DEBUG: request_string = \n' + current_request_str)
 
-                self.__handle_routes(cl)
-                cl.close()
+                self.__handle_routes(cl, current_request_str, current_ssid)
+                #cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
                 s.close() #type: ignore
@@ -140,23 +140,22 @@ class mini_server():
             (route, handler, params)
         )
     
-    def __handle_routes(self, cl):
+    def __handle_routes(self, cl, current_request_str, current_ssid):
         # cl is the client
 
         # get route and query parameters
-        _, route, query_parameters, _ = self.__parse_request_string(self.current_request_str)
+        _, route, query_parameters, form_data, _ = self.__parse_request_string(current_request_str)
 
-        # debug
-        print('request on route: ', route)
+        #print('DEBUG: request on route: ', route)
 
         # get the handler function and the default params we need to pass in
         route_handlers = self.__get_handlers(route)
 
         for route_handler in route_handlers:
             _, handler_func, handler_params = route_handler
-            print('DEBUG: route_handler = ', route_handler)
+            #print('DEBUG: route_handler = ', route_handler)
             # execute the handler and get a header and response
-            header, response = handler_func(**handler_params, query_parameters=query_parameters)
+            header, response = handler_func(**handler_params, query_parameters=query_parameters, form_data=form_data, current_ssid=current_ssid)
             # send the header
             cl.send(header)
             # send the response
@@ -170,12 +169,12 @@ class mini_server():
         #
         # e.g. for 'GET /update/?pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on'
 
-        # just get the first line
-        request_string = request_string.split('\n')[0]
+        # get a list of lines
+        request_string_lines = request_string.split('\n')
 
         # get the method (GET or POST), query (e.g. http://192.168.2.153/.../update)
-        # and protocol (e.g. HTTP/1.1)
-        method, query, protocol = request_string.split(' ')
+        # and protocol (e.g. HTTP/1.1) from first line only
+        method, query, protocol = request_string_lines[0].split(' ')
 
         # get the path (e.g. http://192.168.2.153) and query string (e.g. pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on)
         route, _, query_string = query.partition('?')
@@ -190,7 +189,62 @@ class mini_server():
 
         route = route.rstrip('/')
         
-        return method, route, query_parameters, protocol
+        # the thorny issue of POST requests...
+        # an example POST request:
+        #
+        # POST /save-settings HTTP/1.1
+        # Host: 192.168.2.153
+        # User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:107.0) Gecko/20100101 Firefox/107.0
+        # Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+        # Accept-Language: en-GB,en;q=0.5
+        # Accept-Encoding: gzip, deflate
+        # Content-Type: multipart/form-data; boundary=---------------------------339547375120055923303780590246
+        # Content-Length: 543
+        # Origin: http://192.168.2.153
+        # Connection: keep-alive
+        # Referer: http://192.168.2.153/update
+        # Upgrade-Insecure-Requests: 1
+        #
+        # -----------------------------339547375120055923303780590246
+        # Content-Disposition: form-data; name="pico_name"
+
+        # test name
+        # -----------------------------339547375120055923303780590246
+        # Content-Disposition: form-data; name="sensor"
+
+        # on
+        # -----------------------------339547375120055923303780590246
+        # Content-Disposition: form-data; name="ssid"
+
+        # blah blah
+        # -----------------------------339547375120055923303780590246
+        # Content-Disposition: form-data; name="wifi_pass"
+
+        # testpass
+        # -----------------------------339547375120055923303780590246--
+        form_data = None
+        if request_string_lines[0][:4] == 'POST':
+            _, _, content_type = [line for line in request_string_lines if 'Content-Type' in line[:12]][0].partition(': ')
+
+            # if it's a multipart form (i.e. not urlencoded)
+            if content_type[:19] == 'multipart/form-data':
+                # get the boundary (i.e. the string that separates form entries)
+                boundary = content_type.partition('; ')[2][9:].strip()
+                #print('DEBUG: boundary = \n' + boundary)
+                # separate original request string now we know the boundary - we need to add '---' to the start
+                # we can throw away the first two, and last items:
+                # - the first item is everything before the first boundary
+                # - the last item is just '--' because the form items end with the boundary + '--'
+                form_items = [form_item.rstrip('--') for form_item in request_string.split(boundary)][2:-1]
+                # now we need to get a dictionary of field names and contents
+                form_data = {}
+                for form_item in form_items:
+                    key, _, value = form_item.partition('\r\n\r\n')
+                    form_data[key[40:-1]] = value.strip()
+
+                print('DEBUG: form_data = \n' + str(form_data))
+
+        return method, route, query_parameters, form_data, protocol
 
     def __get_handlers(self, route: str):
         # check all route/handler definitions for the one that contain this route

@@ -1,3 +1,5 @@
+possible_sensors = ('bme280', 'dht22', 'none')
+
 def settings_wrapper():
     """
     Check whether settings exist in `settings.json`
@@ -11,14 +13,12 @@ def settings_wrapper():
     if settings is False:
         # cobble together settings then write them to settings file if we haven't got any
         print('reading setup wifi settings from wifi.txt')
-        wifi_ssid, wifi_password = read_initial_wifi_settings()
+        ssid, wifi_pw = read_initial_wifi_settings()
         settings = {
             'pico_id': 'setup',
-            'sensor_type': None,
-            'secrets': [{
-                'ssid': wifi_ssid,
-                'pw': wifi_password
-            }]
+            'sensor': 'none',
+            'ssid': ssid,
+            'wifi_pw': wifi_pw
         }
         write_settings(settings)
     
@@ -53,7 +53,7 @@ def read_settings():
 def read_initial_wifi_settings():
     """
     Try to load wifi settings from wifi.txt.
-    Returns `wifi_ssid` and `wifi_password`
+    Returns `ssid` and `wifi_pw`
     """
     import os, machine
     
@@ -68,14 +68,14 @@ def read_initial_wifi_settings():
     initial_settings_filename = filenames[filename_index]
     
     with open(initial_settings_filename, 'r') as f:
-        wifi_ssid = f.readline().strip('\n')
-        wifi_password = f.readline().strip('\n')
+        ssid = f.readline().strip('\n')
+        wifi_pw = f.readline().strip('\n')
     
-    return wifi_ssid, wifi_password
+    return ssid, wifi_pw
 
 def write_settings(settings):
     """
-    Serialise settins as JSON and save to file. Tries 3 times.
+    Serialise settings as JSON and save to file. Tries 3 times.
 
     Args:
         settings (dict): Dictionary containing settings to write to disk.
@@ -103,7 +103,7 @@ def delete_settings():
     Deletes settings. Tries 3 times.
 
     Returns:
-        _type_: _description_
+        bool: True if successful, False if fails
     """
     import os, time
     attempts = 3

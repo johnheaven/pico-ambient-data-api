@@ -15,10 +15,14 @@ def identify_myself(*args, **kwargs):
 @handler
 def ambient_data_readings(*args, **kwargs):
     import json
-    # kwargs['ambient_data'] = the ambient_data generator
+    # kwargs['ambient_data'] is the ambient_data generator
+    # kwargs['get_settings_func'] is the function for getting current settings
+
+    settings = kwargs['get_settings_func']()
+
     return_data = list(next(kwargs['ambient_data']))
-    return_data.append(kwargs['pico_id'])
-    return_data.append(kwargs['sensor_type'])
+    return_data.append(settings['pico_id'])
+    return_data.append(settings['sensor'])
     return_data.append(kwargs['pico_uuid'])
     return_data = dict(zip(('temp', 'pressure', 'humidity', 'pico_id', 'sensor', 'pico_uuid'), return_data))
     
@@ -39,23 +43,35 @@ def not_found(*args, **kwargs):
 def update_settings_form(*args, **kwargs):
     # update settings e.g. wifi
 
-    # a list of fields we need for the template
+    # a list of fields we need for the template. we add sensor as a special case later on
     fields =[
-        'pico_name',
-        'ssid_name',
-        'wifi_pass',
-        'bme280_checked',
-        'dht22_checked'
+        'pico_id',
+        'ssid',
+        'wifi_pw',
         ]
+    
+    # get settings from the get_settings_func passed in as a kwargs parameter
+    settings = kwargs['get_settings_func']()
+
+    possible_sensors = kwargs['possible_sensors']
 
     # the replacements we'll insert into the template
-    replacements = {key: (kwargs[key] if key in kwargs.keys() else '') for key in fields}
+    replacements = {key: (settings[key] if key in settings.keys() else '') for key in fields}
 
+    # add current_ssid
+    replacements['current_ssid'] = kwargs['current_ssid']
+
+    for sensor in possible_sensors:
+        replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
+
+    print('DEBUG: replacements = \n' + str(replacements))
+
+    # we need a header
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
 
+    # open the template and substitute the replacements
     with open('mini_server/templates/update.html', mode='r') as template:
         response = '\n'.join(list(template)).format(**replacements)
-    
     return header, response
 
 @handler
@@ -63,11 +79,20 @@ def save_settings(*args, **kwargs):
     # get current settings
     # merge with new settings
     # write settings to disk
-    query_params = kwargs['query_parameters']
+
+    current_settings = kwargs['get_settings_func']()
+    new_settings = kwargs['form_data']
+
+    kwargs['write_settings_func'](new_settings)
+
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
+
     response = f"""
-    You submitted the following things:
-    {query_params}
+    Current settings:
+    {current_settings}
+    <br><br>
+    New settings:
+    {new_settings}
     """
 
     return header, response

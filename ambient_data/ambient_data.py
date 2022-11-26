@@ -8,11 +8,11 @@ class ambient_data_reader:
         sensors_methods_dict = {
             'bme280': [self.__get_bme280_reading, self.__init_bme280],
             'dht22': [self.__get_dht22_reading, self.__init_dht22],
-            None: [self.__no_sensor_reading, self.__init_no_sensor]
+            'none': [self.__no_sensor_reading, self.__init_no_sensor]
             }
         try:
-            self.get_reading = sensors_methods_dict[sensor_type][0]
-            self.initiate_sensor = sensors_methods_dict[sensor_type][1]
+            self.get_reading = sensors_methods_dict[sensor_type][0] #type: ignore
+            self.initiate_sensor = sensors_methods_dict[sensor_type][1] #type: ignore
         except KeyError:
             # raise an error if the sensor_type isn't supported
             raise ValueError(
@@ -27,7 +27,7 @@ class ambient_data_reader:
     def __init_bme280(self):
         from machine import I2C, Pin
         # bme280 micropython library needs to have been installed, e.g. via Thonny
-        import bme280
+        import bme280 #type: ignore
 
         #initializing the I2C method 
         i2c = I2C(
@@ -35,7 +35,7 @@ class ambient_data_reader:
             sda=Pin(self.sda_pin),
             scl=Pin(self.scl_pin),
             freq=400000
-            )
+            ) #type: ignore
         scan_results = i2c.scan()
 
         # Checks whether a device can be found and raises error if not
@@ -53,7 +53,7 @@ class ambient_data_reader:
         from machine import Pin
         from dht import DHT22
 
-        self.dht22_sensor = DHT22(Pin(self.gpio))
+        self.dht22_sensor = DHT22(Pin(self.gpio)) #type: ignore
         print('initiated dht22')
 
     def __no_sensor_reading(self):

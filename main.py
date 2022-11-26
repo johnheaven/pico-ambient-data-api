@@ -5,16 +5,16 @@ from helpers import settings_management as sttgs
 from mini_server.handlers import *
 
 # get the UUID of this machine
-my_uuid = device_uuid_string()
+pico_uuid = device_uuid_string()
 # give this Pico an id so it can be found over the network
 
 settings = sttgs.settings_wrapper()
 
 pico_id = settings['pico_id']
 # determine the sensor type to use
-sensor_type = settings['sensor_type']
-# secrets (wifi password etc.)
-secrets = settings['secrets']
+sensor_type = settings['sensor']
+# secrets (wifi password etc.). We build this as a list for legacy reasons (too lazy to rewrite everything at the moment)
+secrets = [{'ssid': settings['ssid'], 'wifi_pw': settings['wifi_pw']}]
 
 # get a generator to yield readings one at a time
 ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type)
@@ -30,9 +30,8 @@ ms.add_route(
     handler=ambient_data_readings,
     params={
         'ambient_data': ambient_data,
-        'pico_id': pico_id,
-        'sensor_type': sensor_type,
-        'pico_uuid': my_uuid}
+        'get_settings_func': sttgs.settings_wrapper,
+        'pico_uuid': pico_uuid}
     )
 
 ms.add_route(
@@ -42,23 +41,21 @@ ms.add_route(
     )
 
 ms.add_route(
-    route='/update',
+    route='/settings',
     handler=update_settings_form,
     params={
-        'pico_name':'test name',
-        'ssid_name': 'blah blah',
-        'wifi_pass': 'testpass',
-        'bme280_checked': 'checked',
-        'dht22_checked': ''}
+        'get_settings_func': sttgs.settings_wrapper,
+        'possible_sensors': sttgs.possible_sensors
+        }
 )
 
 ms.add_route(
     route='/save-settings',
     handler=save_settings,
-    params={}
+    params={
+        'get_settings_func': sttgs.settings_wrapper,
+        'write_settings_func': sttgs.write_settings
+    }
 )
 
-ms.connect_to_wifi()
-
-# start listening
-ms.listen()
+ms.connect()
