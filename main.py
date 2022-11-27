@@ -16,8 +16,14 @@ sensor_type = settings['sensor']
 # secrets (wifi password etc.). We build this as a list for legacy reasons (too lazy to rewrite everything at the moment)
 secrets = [{'ssid': settings['ssid'], 'wifi_pw': settings['wifi_pw']}]
 
-# get a generator to yield readings one at a time
-ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type)
+# get a generator to yield readings one at a time – revert sensor to 'none' if we get an IOError
+# and change this in the settings too
+try:
+    ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type)
+except IOError:
+    ambient_data = get_ambient_data(iterations=True, sensor_type='none')
+    settings['sensor'] = 'none'
+    sttgs.write_settings(settings)
 
 ms = mini_server(
     secrets=secrets,
@@ -41,9 +47,10 @@ ms.add_route(
     )
 
 ms.add_route(
-    route='/settings',
-    handler=update_settings_form,
+    route='/',
+    handler=overview,
     params={
+        'ambient_data': ambient_data,
         'get_settings_func': sttgs.settings_wrapper,
         'possible_sensors': sttgs.possible_sensors
         }

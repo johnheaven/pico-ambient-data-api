@@ -40,7 +40,19 @@ def not_found(*args, **kwargs):
     return header, response
 
 @handler
-def update_settings_form(*args, **kwargs):
+def overview(*args, **kwargs):
+
+    ### INITIALISE REPLACEMENTS I.E. VALUES WE INSERT INTO TEMPLATE
+    replacements = {}
+
+    ### HEADER ###
+
+    replacements['temp'], replacements['pressure'], replacements['humidity'] = next(kwargs['ambient_data'])
+
+    # add current_ssid
+    replacements['current_ssid'] = kwargs['current_ssid']
+
+    ### SETTINGS FORM
     # update settings e.g. wifi
 
     # a list of fields we need for the template. we add sensor as a special case later on
@@ -56,21 +68,19 @@ def update_settings_form(*args, **kwargs):
     possible_sensors = kwargs['possible_sensors']
 
     # the replacements we'll insert into the template
-    replacements = {key: (settings[key] if key in settings.keys() else '') for key in fields}
-
-    # add current_ssid
-    replacements['current_ssid'] = kwargs['current_ssid']
+    replacements.update({key: (settings[key] if key in settings.keys() else '') for key in fields})
 
     for sensor in possible_sensors:
         replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
+    ### RENDER HEADER AND RESPONSE TEMPLATE ###
     print('DEBUG: replacements = \n' + str(replacements))
 
     # we need a header
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
 
     # open the template and substitute the replacements
-    with open('mini_server/templates/update.html', mode='r') as template:
+    with open('mini_server/templates/index.html', mode='r') as template:
         response = '\n'.join(list(template)).format(**replacements)
     return header, response
 

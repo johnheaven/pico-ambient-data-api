@@ -159,7 +159,8 @@ class mini_server():
             # send the header
             cl.send(header)
             # send the response
-            cl.send(response)
+            cl.write(response)
+
             cl.close()
     
     def __parse_request_string(self, request_string):
@@ -176,8 +177,12 @@ class mini_server():
         # and protocol (e.g. HTTP/1.1) from first line only
         method, query, protocol = request_string_lines[0].split(' ')
 
-        # get the path (e.g. http://192.168.2.153) and query string (e.g. pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on)
+        # get the route (e.g. /data) and query string (e.g. pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on)
         route, _, query_string = query.partition('?')
+        
+        # remove trailing slash from route, unless it's just /
+        route = '/' + route.strip('/')
+        print('DEBUG: route = ' + route)
         
         if query_string:
             # split out each parameter
@@ -186,8 +191,6 @@ class mini_server():
             query_parameters = {parameter.split('=')[0]: parameter.split('=')[1] for parameter in parameters}
         else:
             query_parameters = None
-
-        route = route.rstrip('/')
         
         # the thorny issue of POST requests...
         # an example POST request:

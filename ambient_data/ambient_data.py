@@ -1,5 +1,5 @@
 class ambient_data_reader:
-    def __init__(self, sda_pin=0, scl_pin=1, gpio=None, sensor_type=None):
+    def __init__(self, sda_pin=0, scl_pin=1, gpio=20, sensor_type='none'):
         self.sda_pin = sda_pin
         self.scl_pin = scl_pin
         self.gpio = gpio
@@ -40,7 +40,7 @@ class ambient_data_reader:
 
         # Checks whether a device can be found and raises error if not
         if len(scan_results) == 0:
-            raise ValueError("No device found.")
+            raise IOError("No device found.")
             
         self.bme280_sensor = bme280.BME280(i2c=i2c)
         print('initiated bme280')
@@ -62,7 +62,7 @@ class ambient_data_reader:
     def __init_no_sensor(self):
         print('No sensor configured')
 
-def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sensor_type='bme280'):
+def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sensor_type='none'):
     """Get ambient data from specified device
 
     Args:
