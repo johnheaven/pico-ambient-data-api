@@ -9,7 +9,7 @@ class mini_server():
         self.current_route = ''
         self.response_timeout = response_timeout
 
-        # if we have a function for finding UUID, then let's be havin' it!
+        # if we have a UUID, then let's be havin' it!
         self.device_uuid = device_uuid
 
         # wifi connection data/setup
