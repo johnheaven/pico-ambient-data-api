@@ -93,9 +93,6 @@ class mini_server():
                 cl.close()
                 #flash_led(led=led)
                 print('connection closed')
-                # wait 10 mins then reset (and start again)
-                utime.sleep(600)
-                machine.reset()
     
     def add_route(self, route, handler):
         # dictionary of routes (i.e. strings) and handlers (i.e. functions)
