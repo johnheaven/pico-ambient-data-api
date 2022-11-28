@@ -1,5 +1,5 @@
 class ambient_data_reader:
-    def __init__(self, sda_pin=0, scl_pin=1, gpio=None, sensor_type='bme280'):
+    def __init__(self, sda_pin=0, scl_pin=1, gpio=20, sensor_type='bme280'):
         self.sda_pin = sda_pin
         self.scl_pin = scl_pin
         self.gpio = gpio
