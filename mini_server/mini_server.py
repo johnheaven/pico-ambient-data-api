@@ -69,6 +69,10 @@ class mini_server():
         addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
         self.open_socket = socket.socket()
         self.open_socket.bind(addr)
+
+        # these two lines make it easier to debug - you don't have to hard reset the Pico
+        # every time you want to restart. (Without this, you get an OSError: [Errno 98] EADDRINUSE error) 
+        self.open_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #type:ignore
         self.open_socket.listen(1)
 
         print('listening on', addr)

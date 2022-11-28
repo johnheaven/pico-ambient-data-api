@@ -45,7 +45,10 @@ class ambient_data_reader:
         print('initiated bme280')
 
     def __get_dht22_reading(self):
+        from utime import sleep
         self.dht22_sensor.measure()
+        sleep(0.5)
+        # print('DEBUG: Read DHT22')
         return self.dht22_sensor.temperature(), None, self.dht22_sensor.humidity()
 
     def __init_dht22(self):
@@ -55,7 +58,7 @@ class ambient_data_reader:
         self.dht22_sensor = DHT22(Pin(self.gpio))
         print('initiated dht22')
 
-def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sensor_type='bme280'):
+def get_ambient_data(sda_pin=0, scl_pin=1, gpio=20, iterations=1, interval_seconds=2, sensor_type='bme280'):
     """Get ambient data from specified device
 
     Args:
@@ -70,7 +73,7 @@ def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sen
     
     from utime import sleep
     
-    adr = ambient_data_reader(sensor_type=sensor_type, gpio=22)
+    adr = ambient_data_reader(sensor_type=sensor_type, gpio=gpio)
     adr.initiate_sensor()
 
     # Start a loop -> it's infinite if iterations == True. Otherwise stops after max number of iterations reached.

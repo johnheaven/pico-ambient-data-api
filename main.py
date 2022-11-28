@@ -10,11 +10,18 @@ my_uuid = device_uuid_string()
 pico_id = global_settings[my_uuid]['pico_id']
 # determine the sensor type to use
 sensor_type = global_settings[my_uuid]['sensor_type']
+# get gpio pin if present
+try:
+    gpio = global_settings[my_uuid]['gpio']
+except KeyError:
+    # guess 22 if not present... not relevant for bme280
+    gpio = 22
+
 # secrets (wifi password etc.)
 secrets = global_settings[my_uuid]['secrets']
 
 # get a generator to yield readings one at a time
-ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type)
+ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type, gpio=gpio)
 
 ms = mini_server(secrets=secrets, rp2=rp2, not_found_response=wrap_route(not_found, pico_id=pico_id))
 ms.connect_to_wifi()
