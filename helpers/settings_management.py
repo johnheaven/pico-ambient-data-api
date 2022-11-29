@@ -17,6 +17,7 @@ def settings_wrapper():
         settings = {
             'pico_id': 'setup',
             'sensor': 'none',
+            'gpio': 0,
             'ssid': ssid,
             'wifi_pw': wifi_pw
         }

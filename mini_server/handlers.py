@@ -3,6 +3,34 @@ def handler(f):
         return f(*args, **kwargs)
     return wrapped_handler
 
+def response_generator(templates: tuple, replacements: dict, read_bytes=1024, lookahead_bytes=2, template_dir='mini_server/templates/'):
+    # open the template
+    from re import compile as re_compile
+    # a simple regex to get all instances of {{token}}
+
+    token_re = re_compile('(\{\{(\w*)\}\})')
+
+    for template in templates:
+        template = open(template_dir + template, mode='rb')
+        # initialise chunk with arbitrary text just to make sure the loop starts
+        chunk = b'whatever'
+        while chunk:
+            chunk = template.read(read_bytes - lookahead_bytes).decode('utf-8')
+            incomplete_tokens = True
+            while incomplete_tokens:
+                # look ahead by set number of bytes if necessary to get a full token
+                if chunk.count('{{') != chunk.count('}}'):
+                    chunk += template.read(lookahead_bytes).decode('utf-8')
+                    print('DEBUG: incomplete tokens')
+                else:
+                    incomplete_tokens = False
+            
+            # use regex to do replacement, and yield result
+            yield token_re.sub(
+                lambda token_match: str(replacements[token_match.groups()[1]]) if token_match.groups()[1] in replacements.keys() else token_match.groups()[0],
+                chunk)
+        template.close()
+
 @handler
 def identify_myself(*args, **kwargs):
     from helpers.bits_and_bobs import device_uuid_string
@@ -53,18 +81,14 @@ def overview(*args, **kwargs):
     replacements['current_ssid'] = kwargs['current_ssid']
 
     ### SETTINGS FORM
-    # update settings e.g. wifi
 
-    # a list of fields we need for the template. we add sensor as a special case later on
-    fields =[
-        'pico_id',
-        'ssid',
-        'wifi_pw',
-        ]
-    
     # get settings from the get_settings_func passed in as a kwargs parameter
     settings = kwargs['get_settings_func']()
 
+    # a list of fields we need for the template. we add sensor as a special case later on
+    exclude_from_fields = ['sensor']
+    fields = filter(lambda item: False if item in exclude_from_fields else True, list(settings.keys()))
+    
     possible_sensors = kwargs['possible_sensors']
 
     # the replacements we'll insert into the template
@@ -73,37 +97,36 @@ def overview(*args, **kwargs):
     for sensor in possible_sensors:
         replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
-    ### RENDER HEADER AND RESPONSE TEMPLATE ###
-    print('DEBUG: replacements = \n' + str(replacements))
+    # print('DEBUG: replacements = \n' + str(replacements))
+
+    ### RETURN HEADER AND GENERATOR FOR RESPONSE TEMPLATE ###
 
     # we need a header
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-
-    # open the template and substitute the replacements
-    with open('mini_server/templates/index.html', mode='r') as template:
-        response = '\n'.join(list(template)).format(**replacements)
-    return header, response
+    
+    return header, response_generator(templates=('header.html', 'current_data.html', 'settings.html', 'footer.html'), replacements=replacements)
 
 @handler
 def save_settings(*args, **kwargs):
     # get current settings
     # merge with new settings
     # write settings to disk
-
-    current_settings = kwargs['get_settings_func']()
     new_settings = kwargs['form_data']
+
+    new_settings['gpio'] = int(new_settings['gpio'])
 
     kwargs['write_settings_func'](new_settings)
 
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
 
     response = f"""
-    Current settings:
-    {current_settings}
-    <br><br>
     New settings:
     {new_settings}
     """
 
     return header, response
     
+@handler
+def hard_reset(*args, **kwargs):
+    import machine
+    machine.reset()

@@ -81,6 +81,8 @@ class mini_server():
         self.open_socket.bind(addr)
 
         print('listening on', addr)
+
+        # needs work - this is more functional than object oriented...
         self.listen(current_ssid)
 
     def listen(self, current_ssid):
@@ -89,19 +91,18 @@ class mini_server():
         # Listen for connections
         s = self.open_socket
         s.listen(1)
-        # set a timeout of 0.1 seconds
         while True:
             try:
                 cl, addr = s.accept()
                 
-                cl.settimeout(0.5)
+                cl.settimeout(1)
 
-                # receive up to 2048 bytes at a time and store the result as a string
+                # receive up to 1024 bytes at a time and store the result as a string
                 requests = []
                 while True:
                     try:
                         #print('DEBUG: Trying to receive data...')
-                        data = cl.recv(128)
+                        data = cl.recv(1024)
                         #print('DEBUG: Received data...\n' + data)
                     except:
                         #print('DEBUG: No more data...')
@@ -115,23 +116,23 @@ class mini_server():
                 
                 # don't bother if there isn't a reasonable request
                 if len(request) == 0: continue
+
+                # decode the request to string from bytes
                 current_request_str = str(request.decode('utf-8'))
                     
-                print('DEBUG: request_string = \n' + current_request_str)
+                #print('DEBUG: request_string = \n' + current_request_str)
 
                 self.__handle_routes(cl, current_request_str, current_ssid)
-                #cl.close()
+                
+                cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
-                s.close() #type: ignore
-                self.wlan.disconnect()
-                print('Connection closed')
                 if isinstance(e, OSError):
-                    # go into deep sleep for 10 mins then try again (hopefully)
-                    #print('OSError...')
-                    #machine.deepsleep(600000)
                     raise e
                 elif isinstance(e, KeyboardInterrupt):
+                    s.close()
+                    self.wlan.disconnect()
+                    print('Connection closed')
                     raise e
 
     def add_route(self, route: str, handler, params: dict):
@@ -155,11 +156,16 @@ class mini_server():
             _, handler_func, handler_params = route_handler
             #print('DEBUG: route_handler = ', route_handler)
             # execute the handler and get a header and response
-            header, response = handler_func(**handler_params, query_parameters=query_parameters, form_data=form_data, current_ssid=current_ssid)
+            header, response_generator = handler_func(**handler_params, query_parameters=query_parameters, form_data=form_data, current_ssid=current_ssid)
             # send the header
             cl.send(header)
             # send the response
-            cl.write(response)
+            for chunk in response_generator:
+                # print('DEBUG: chunk = \n', chunk)
+                total_bytes = len(chunk)
+                sent_bytes = 0
+                while sent_bytes < total_bytes:
+                    sent_bytes = cl.write(chunk[sent_bytes:])
 
             cl.close()
     

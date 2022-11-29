@@ -15,12 +15,14 @@ pico_id = settings['pico_id']
 sensor_type = settings['sensor']
 # secrets (wifi password etc.). We build this as a list for legacy reasons (too lazy to rewrite everything at the moment)
 secrets = [{'ssid': settings['ssid'], 'wifi_pw': settings['wifi_pw']}]
+# gpio (only relevant for DHT22)
+gpio = settings['gpio']
 
 # get a generator to yield readings one at a time – revert sensor to 'none' if we get an IOError
 # and change this in the settings too
 try:
-    ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type)
-except IOError:
+    ambient_data = get_ambient_data(iterations=True, sensor_type=sensor_type, gpio=gpio, sda_pin=20, scl_pin=17)
+except OSError:
     ambient_data = get_ambient_data(iterations=True, sensor_type='none')
     settings['sensor'] = 'none'
     sttgs.write_settings(settings)
@@ -45,6 +47,12 @@ ms.add_route(
     handler=identify_myself,
     params={'pico_id': pico_id}
     )
+
+ms.add_route(
+    route='/hard-reset',
+    handler=hard_reset,
+    params={}
+)
 
 ms.add_route(
     route='/',
