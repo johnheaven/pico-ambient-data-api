@@ -5,6 +5,7 @@ class mini_server():
         
         self.secrets = secrets
         self.routes = []
+        self.callbacks = {}
         self.not_found_response = not_found_response
         self.current_route = ''
         self.response_timeout = response_timeout
@@ -27,8 +28,9 @@ class mini_server():
         # try each network 4 times
 
         ### try to connect - cycle through available secrets
+        self.fire_callback('wifi_starting_to_connect')
         
-        # get long list of (repeated) secrets
+        # get long list of (repeated) secrets - i.e. try each SSID/password combination 4 times
         secrets_repeated = self.secrets * 4
         current_ssid = ''
 
@@ -38,8 +40,6 @@ class mini_server():
             secret = secrets_repeated.pop(0)
             # connect to the ssid
             self.wlan.connect(secret['ssid'], secret['wifi_pw'])
-            # save ssid name for later use
-            current_ssid = secret['ssid']
             # wait for connect or fail
             # max_wait is number of seconds to wait in total
             max_wait = 20
@@ -49,7 +49,7 @@ class mini_server():
                 max_wait -= 1
                 print(f'waiting for connection to {secret["ssid"]}...')
                 print(f'status = {self.wlan.status()}')
-                utime.sleep(1)
+                utime.sleep(5)
 
             if self.wlan.status() != network.STAT_GOT_IP:
                 # something went wrong
@@ -58,16 +58,19 @@ class mini_server():
                 # if we've got no more networks to try, then sleep 10 mins before resetting the machine
                 # so we can start again
                 if len(secrets_repeated) == 0:
+                    self.fire_callback('cant_connect')
                     print('Network connection failed')
-                    print('Waiting 10 mins then restarting...')
-                    utime.sleep(600)
-                    machine.reset()
+                    print('Deep sleeping for 10 mins then trying again...')
+                    machine.deepsleep(600)
+                else:
+                    utime.sleep(5)
             else:
+                # save ssid name for later use
+                current_ssid = secret['ssid']
+                self.fire_callback('wifi_connected')
                 print(f'Connected to: {secret["ssid"]}')
                 status = self.wlan.ifconfig()
                 print( 'ip = ' + status[0] )
-                if self.device_uuid:
-                    print(f'UUID: {self.device_uuid}')
                 secrets_repeated = []
 
         # Open socket
@@ -135,11 +138,25 @@ class mini_server():
                     print('Connection closed')
                     raise e
 
-    def add_route(self, route: str, handler, params: dict):
+    def add_route(self, route: str, handler, params: dict={}):
         # list of tuples of routes (i.e. strings) and handlers (i.e. functions)
         self.routes.append(
             (route, handler, params)
         )
+
+    def add_callback(self, event: str, callback: tuple) -> None:
+        # add callback function to the list for the appropriate key within the dictionary
+        self.callbacks.setdefault(event, []).append(callback)
+
+    def fire_callback(self, event, more_params={}):
+        # get the callback function and parameters, or return a dummy function
+        if event in self.callbacks.keys():
+            current_callbacks = self.callbacks[event]
+            for callback in current_callbacks:
+                # merge the params from the callback with more_params (more_params take precedence)
+                more_params.update(callback[1])
+                # fire the callback with all the parameters
+                callback[0](**more_params)
     
     def __handle_routes(self, cl, current_request_str, current_ssid):
         # cl is the client
