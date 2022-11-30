@@ -58,7 +58,7 @@ class mini_server():
         s = self.__open_socket()
 
         # listen for connections
-        s.listen(1)
+        s.listen(3)
         while True:
             try:
                 cl, addr = s.accept()
