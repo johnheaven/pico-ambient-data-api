@@ -1,5 +1,6 @@
 def device_uuid_string():
-    """Gets the device's UUID as a string.
+    """
+    Gets the device's UUID as a string.
     Thanks to github.com/JH-87/ for finding out how to do get a string from bytes :)
 
     Returns:
@@ -9,6 +10,9 @@ def device_uuid_string():
     return binascii.b2a_base64(machine.unique_id()).decode('utf-8').strip('\n')
 
 class led_notify():
+    """
+    An object to emit predefined notifications through LED flashes.
+    """
     def __init__(self, led='LED'):
         # get internal LED
         self.LED = self.get_led(led)
@@ -39,3 +43,16 @@ class led_notify():
             led.high()
         else:
             led.low()
+
+def next(iterable, default=None):
+    """
+    Recreate Python's built-in next function, which allows for a default if the iterable is exhausted.
+    """
+    from builtins import next as _next
+    try:
+        return _next(iterable)
+    except StopIteration as e:
+        if default is not None:
+            return default
+        else:
+            raise e

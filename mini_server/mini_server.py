@@ -4,16 +4,19 @@ class mini_server():
         import rp2
         
         self.secrets = secrets
+        
+        # routes and callbacks (they're essentially the same entity)
         self.routes = []
-        self.callbacks = {}
-        self.not_found_response = not_found_response
-        self.current_route = ''
-        self.response_timeout = response_timeout
+        self.callbacks = []
 
-        # if we have a UUID, then let's be havin' it!
-        self.device_uuid = device_uuid
+        # the handler for 404 not found
+        self.not_found_response = not_found_response
+        
+        # initiate current route
+        self.current_route = ''
 
         # wifi connection data/setup
+        # TODO: write a method to configure this
         rp2.country('DE')
     
     def connect(self):
@@ -23,8 +26,8 @@ class mini_server():
         import machine
 
         ### activate WLAN on device
-        self.wlan = network.WLAN(network.STA_IF)
-        self.wlan.active(True)
+        wlan = network.WLAN(network.STA_IF)
+        wlan.active(True)
         # try each network 4 times
 
         ### try to connect - cycle through available secrets
@@ -39,22 +42,22 @@ class mini_server():
             # get one of the ssid-password pairs
             secret = secrets_repeated.pop(0)
             # connect to the ssid
-            self.wlan.connect(secret['ssid'], secret['wifi_pw'])
+            wlan.connect(secret['ssid'], secret['wifi_pw'])
             # wait for connect or fail
             # max_wait is number of seconds to wait in total
             max_wait = 20
             while max_wait > 0:
                 # keep waiting for specified amount of time
-                if self.wlan.status() < 0 or self.wlan.status() > 3 or self.wlan.status() == network.STAT_GOT_IP: break
+                if wlan.status() < 0 or wlan.status() > 3 or wlan.status() == network.STAT_GOT_IP: break
                 max_wait -= 1
                 print(f'waiting for connection to {secret["ssid"]}...')
-                print(f'status = {self.wlan.status()}')
+                print(f'status = {wlan.status()}')
                 utime.sleep(5)
 
-            if self.wlan.status() != network.STAT_GOT_IP:
+            if wlan.status() != network.STAT_GOT_IP:
                 # something went wrong
                 print('Couldn\'t connect ...')
-                print('Status code received:', self.wlan.status())
+                print('Status code received:', wlan.status())
                 # if we've got no more networks to try, then sleep 10 mins before resetting the machine
                 # so we can start again
                 if len(secrets_repeated) == 0:
@@ -69,68 +72,48 @@ class mini_server():
                 current_ssid = secret['ssid']
                 self.fire_callback('wifi_connected')
                 print(f'Connected to: {secret["ssid"]}')
-                status = self.wlan.ifconfig()
+                status = wlan.ifconfig()
                 print( 'ip = ' + status[0] )
                 secrets_repeated = []
 
         # Open socket
         addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]  # type: ignore
         
-        self.open_socket = socket.socket()  # type: ignore
+        s = socket.socket()  # type: ignore
         
         # these two lines make it easier to debug - you don't have to hard reset the Pico
         # every time you want to restart. (Without this, you get an OSError: [Errno 98] EADDRINUSE error) 
-        self.open_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #type:ignore
-        self.open_socket.bind(addr)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #type:ignore
+        s.bind(addr)
 
         print('listening on', addr)
 
-        # needs work - this is more functional than object oriented...
-        self.listen(current_ssid)
+        # TODO: separate steps into methods, then have one connect method that calls them all.
+        self.listen(s, wlan, current_ssid)
 
-    def listen(self, current_ssid):
-        import machine
-        from utime import sleep
+    def listen(self, s, wlan, current_ssid):
         # Listen for connections
-        s = self.open_socket
         s.listen(1)
         while True:
             try:
                 cl, addr = s.accept()
-                              
-                #print('DEBUG: FINISHED receiving data')
                 request = self.request_gen(cl)
-                
-                # don't bother if there isn't a reasonable request
-                #if len(request) == 0: continue
-
-                # decode the request to string from bytes
-                   
-                #print('DEBUG: request_string = \n' + current_request_str)
-
-                self.__handle_routes(cl, request, current_ssid)
-                
+                self.__handle_routes_and_callbacks(cl, request, current_ssid)
                 cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
-                if isinstance(e, OSError):
-
-                    raise e
-                elif isinstance(e, KeyboardInterrupt):
-                    s.close()
-                    self.wlan.disconnect()
-                    print('Connection closed')
-                    raise e
+                s.close()
+                wlan.disconnect()
+                print('Connection closed')
+                raise e
  
     def __handle_routes(self, cl, request, current_ssid):
+        
         # get route and query parameters
-        #print('DEBUG: next(request) = ', next(request))
-        _, route, query_parameters, form_data, _ = self.__parse_request(request)
+        _, route, query_parameters, form_data, _ = self.__parse_request(request) #type: ignore
 
-        #print('DEBUG: request on route: ', route)
-
-        # get the handler function and the default params we need to pass in
-        route_handlers = self.__get_handlers(route)
+        # get a tuple with handler functions and the default params we need to pass in
+        route_handlers = self.__get_handlers_or_callbacks(route)
 
         for route_handler in route_handlers:
             _, handler_func, handler_params = route_handler
@@ -146,17 +129,18 @@ class mini_server():
                 sent_bytes = 0
                 while sent_bytes < total_bytes:
                     sent_bytes = cl.write(chunk[sent_bytes:])
-
-            cl.close()
     
     def __parse_request(self, request):
+        from helpers.bits_and_bobs import next
         # e.g. for 'GET /update/?pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on'
 
         request_lines = self.request_lines_gen(request)
         #print('DEBUG: first 2 items in request_lines = ', next(request_lines) + '\n' + next(request_lines))
 
-        # get first line from the request (generator)
-        current_line = next(request_lines)
+        # get first line from the request (generator) unless it's empty, in which case we return
+        current_line = next(request_lines, False)
+        if not current_line: return False
+
         print('DEBUG: current_line = ', current_line)
         # get the method (GET or POST), query (e.g. http://192.168.2.153/.../update)
         # and protocol (e.g. HTTP/1.1) from first line only
@@ -281,42 +265,55 @@ class mini_server():
             print('DEBUG: After scroll_to current_line = ', current_line)
             return current_line, request_lines, found
 
-    def __get_handlers(self, route: str):
-        # check all route/handler definitions for the one that contain this route
-        # and return handler and parameters
-        route_handlers = tuple(
+    def __get_handlers_or_callbacks(self, route_or_callback: str, type='route') -> tuple:
+        """
+        Checks all route/callback definitions for the one that contain this route
+        and return handlers and parameters in a tuple
+        """
+        lookup = self.callbacks if type == 'callback' else self.routes
+
+        handlers = tuple(
             filter(
-                lambda route_handler:
-                    True if route == route_handler[0] else False,
-                self.routes
+                lambda handler:
+                    True if route_or_callback == handler[0] else False,
+                lookup
                 )
             )
         
-        if len(route_handlers) == 0:
+        if len(handlers) == 0 and type == 'route':
             # append empty dict to not_found_response so return format is consistent
-            route_handlers = (self.not_found_response,)
+            handlers = (self.not_found_response,)
+        else:
+            handlers = tuple()
 
-        return route_handlers
+        return handlers
 
     def add_route(self, route: str, handler, params: dict={}):
-        # list of tuples of routes (i.e. strings) and handlers (i.e. functions)
-        self.routes.append(
-            (route, handler, params)
-        )
+        self.add_route_or_callback(route, handler, params, type='route')
 
-    def add_callback(self, event: str, callback: tuple) -> None:
-        # add callback function to the list for the appropriate key within the dictionary
-        self.callbacks.setdefault(event, []).append(callback)
+    def add_callback(self, route: str, handler, params: dict={}):
+        self.add_route_or_callback(route, handler, params, type='callback')
+
+    def add_route_or_callback(self, route: str, handler, params: dict={}, type):
+        """
+        Add a route, handler and parameters i.e. a URL path and the function to be called when it is requested.
+
+        Args:
+            route (str): The string representation of the route (e.g. /data)
+            handler (Callable): A callable (i.e. function) to be called to handle route
+            params (dict, optional): Keywords arguments to be passed to routes in addition to any default params passed by the server. Defaults to {}.
+        """
+        if type == 'route'
+            add_to = self.routes
+        else:
+            add_to = self.callbacks
+
+        add_to.append((route, handler, params))
 
     def fire_callback(self, event, more_params={}):
         # get the callback function and parameters, or return a dummy function
-        if event in self.callbacks.keys():
-            current_callbacks = self.callbacks[event]
-            for callback in current_callbacks:
-                # merge the params from the callback with more_params (more_params take precedence)
-                more_params.update(callback[1])
-                # fire the callback with all the parameters
-                callback[0](**more_params)
+        self.__get_handlers_or_callbacks(route_or_callback=event)
+        
 
     # receive up to 1024 bytes at a time and store the result as a string
     def request_gen(self, cl, bytes=1024):
