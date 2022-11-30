@@ -181,6 +181,7 @@ class mini_server():
         return method, route, query_parameters, self.form_data_gen(current_line, request_lines) if current_line[:4] == 'POST' else None, protocol
 
     def form_data_gen(self, current_line, request_lines):
+        import ure as re
 
         # the thorny issue of POST requests...
         # an example POST request:
@@ -216,33 +217,54 @@ class mini_server():
         # testpass
         # -----------------------------339547375120055923303780590246--
         
-            # get Content Type (if it exists)
-            current_line, request_lines, content_type_found = self.scroll_to(current_line, request_lines, 'Content-Type')
+        # get Content Type (if it exists)
+        current_line, request_lines, content_type_found = self.scroll_to(current_line, request_lines, 'Content-Type')
 
-            content_type = ''
-            if content_type_found:
-                _, _, content_type = current_line.partition(': ')
+        content_type = ''
+        if content_type_found:
+            _, _, content_type = current_line.partition(': ')
 
-            # if it's a multipart form (i.e. not urlencoded)
-            if content_type_found and content_type[:19] == 'multipart/form-data':
-                print('DEBUG: multipart data')
-                # get the boundary (i.e. the string that separates form entries)
-                boundary = content_type.partition('; ')[2][9:].strip()
-                #print('DEBUG: boundary = \n' + boundary)
-                # separate original request string now we know the boundary - we need to add '---' to the start
-                # we can throw away the first two, and last items:
-                # - the first item is everything before the first boundary
-                # - the last item is just '--' because the form items end with the boundary + '--'
-                while boundary + '--' not in current_line:
-                    form_item_raw = ''
-                    while boundary not in current_line:
-                        form_item_raw += next(request_lines)
-                    key, _, value = form_item_raw.partition('\r\n\r\n')
-                    value = value.strip()
-                    yield key, value
-            else:
-                # can't deal with urlencoded data as there's no micropython library for decoding it
-                pass
+        # if it's a multipart form (i.e. not urlencoded)
+        if content_type_found and content_type[:19] == 'multipart/form-data':
+            print('DEBUG: multipart data')
+            # get the boundary (i.e. the string that separates form entries)
+            boundary = content_type.partition('; ')[2][9:].strip()
+            print('DEBUG: boundary = \n' + boundary)
+            field_sep = '--' + boundary
+            form_end = '--' + boundary + '--'
+
+            # separate original request string now we know the boundary - we need to add '---' to the start
+            # we can throw away the first two, and last items:
+            # - the first item is everything before the first boundary
+            # - the last item is just '--' because the form items end with the boundary + '--'
+            
+            # move to first field
+            current_line, request_lines, content_type_found = self.scroll_to(current_line, request_lines, field_sep)
+            # move to first line after first boundary
+            # do until end of form data reached
+            
+            # get a regex for finding the key (it's faster if we compile it once and reuse it)
+            re_key = re.compile('^Content-Disposition: form-data; name="(.*)"\s*$')
+
+            while form_end not in current_line:
+                print('DEBUG: outer loop (reading fields)')
+                current_line = next(request_lines)
+                print('DEBUG: current_line \n', current_line)
+                
+                # get key and value. key is just in first line, value is any following data (up to next boundary)
+                key = re_key.match(current_line).groups()[0]
+                current_line = next(request_lines)
+                value = ''
+                while field_sep not in current_line:
+                    print('DEBUG: inner loop (reading lines)')
+                    value += current_line
+                    current_line = next(request_lines)
+                print('DEBUG: yielding (key, value) = \n', (key, value))
+                yield key, value
+        else:
+            # can't deal with urlencoded data as there's no micropython library for decoding it
+            # TODO: return an appropriate status code
+            pass
 
     def scroll_to(self, current_line, request_lines, begins_with):
             #print('DEBUG: Before scroll_to current_line = ', current_line)
@@ -251,8 +273,8 @@ class mini_server():
                 #if current_line == '': raise ValueError('current_line empty')
                 try:
                     current_line = next(request_lines)
-                    #print('DEBUG: current_line[:len(begins_with)] = ', current_line[:len(begins_with)])
-                    print('DEBUG: current_line = ', current_line)
+                    print('DEBUG: current_line[:len(begins_with)] = ', current_line[:len(begins_with)])
+                    #print('DEBUG: current_line = ', current_line)
                 except StopIteration:
                     found = False
                     break
@@ -321,7 +343,7 @@ class mini_server():
             # consume chunk line by line until there are no line-breaks left
             if terminator in chunk:
                 next_line, _, chunk = chunk.partition(terminator)
-                print('DEBUG: yielding utf-8 next_line = ', next_line)
+                #print('DEBUG: yielding utf-8 next_line = ', next_line)
                 yield next_line
             else:
                 try:
@@ -329,7 +351,7 @@ class mini_server():
                 except StopIteration as e:
                     break
         if len(chunk) > 0:
-            print('DEBUG: yielding utf-8 chunk = ', chunk)
+            #print('DEBUG: yielding utf-8 chunk = ', chunk)
             yield chunk
 
 

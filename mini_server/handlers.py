@@ -109,9 +109,12 @@ def overview(*args, **kwargs):
 @handler
 def save_settings(*args, **kwargs):
     # get current settings
-    # merge with new settings
-    # write settings to disk
-    new_settings = kwargs['form_data']
+    # preprocess
+    # write to disk
+
+    #print('DEBUG: list(form_data) = \n', list(kwargs['form_data']))
+
+    new_settings = {pair[0]: pair[1].strip() for pair in kwargs['form_data']}
 
     new_settings['gpio'] = int(new_settings['gpio'])
 
