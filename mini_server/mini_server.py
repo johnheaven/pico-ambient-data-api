@@ -97,72 +97,35 @@ class mini_server():
         while True:
             try:
                 cl, addr = s.accept()
-                
-                cl.settimeout(1)
-
-                # receive up to 1024 bytes at a time and store the result as a string
-                requests = []
-                while True:
-                    try:
-                        #print('DEBUG: Trying to receive data...')
-                        data = cl.recv(1024)
-                        #print('DEBUG: Received data...\n' + data)
-                    except:
-                        #print('DEBUG: No more data...')
-                        break
-                    else:
-                        #print('DEBUG: Appending data...')
-                        requests.append(data)
-                
+                              
                 #print('DEBUG: FINISHED receiving data')
-                request = b''.join(requests)
+                request = self.request_gen(cl)
                 
                 # don't bother if there isn't a reasonable request
-                if len(request) == 0: continue
+                #if len(request) == 0: continue
 
                 # decode the request to string from bytes
-                current_request_str = str(request.decode('utf-8'))
-                    
+                   
                 #print('DEBUG: request_string = \n' + current_request_str)
 
-                self.__handle_routes(cl, current_request_str, current_ssid)
+                self.__handle_routes(cl, request, current_ssid)
                 
                 cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
                 if isinstance(e, OSError):
+
                     raise e
                 elif isinstance(e, KeyboardInterrupt):
                     s.close()
                     self.wlan.disconnect()
                     print('Connection closed')
                     raise e
-
-    def add_route(self, route: str, handler, params: dict={}):
-        # list of tuples of routes (i.e. strings) and handlers (i.e. functions)
-        self.routes.append(
-            (route, handler, params)
-        )
-
-    def add_callback(self, event: str, callback: tuple) -> None:
-        # add callback function to the list for the appropriate key within the dictionary
-        self.callbacks.setdefault(event, []).append(callback)
-
-    def fire_callback(self, event, more_params={}):
-        # get the callback function and parameters, or return a dummy function
-        if event in self.callbacks.keys():
-            current_callbacks = self.callbacks[event]
-            for callback in current_callbacks:
-                # merge the params from the callback with more_params (more_params take precedence)
-                more_params.update(callback[1])
-                # fire the callback with all the parameters
-                callback[0](**more_params)
-    
-    def __handle_routes(self, cl, current_request_str, current_ssid):
-        # cl is the client
-
+ 
+    def __handle_routes(self, cl, request, current_ssid):
         # get route and query parameters
-        _, route, query_parameters, form_data, _ = self.__parse_request_string(current_request_str)
+        #print('DEBUG: next(request) = ', next(request))
+        _, route, query_parameters, form_data, _ = self.__parse_request(request)
 
         #print('DEBUG: request on route: ', route)
 
@@ -186,26 +149,26 @@ class mini_server():
 
             cl.close()
     
-    def __parse_request_string(self, request_string):
-        # micropython regex is severely limited... as if regex wasn't complicated enough.
-        # https://docs.micropython.org/en/latest/library/re.html
-        # so it's easier to break down the string with built-in string functions.
-        #
+    def __parse_request(self, request):
         # e.g. for 'GET /update/?pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on'
 
-        # get a list of lines
-        request_string_lines = request_string.split('\n')
+        request_lines = self.request_lines_gen(request)
+        #print('DEBUG: first 2 items in request_lines = ', next(request_lines) + '\n' + next(request_lines))
 
+        # get first line from the request (generator)
+        current_line = next(request_lines)
+        print('DEBUG: current_line = ', current_line)
         # get the method (GET or POST), query (e.g. http://192.168.2.153/.../update)
         # and protocol (e.g. HTTP/1.1) from first line only
-        method, query, protocol = request_string_lines[0].split(' ')
+        method, query, protocol = [item.strip() for item in current_line.split(' ')]
+        #print('DEBUG: method, query, protocol = ', (method, query, protocol))
 
         # get the route (e.g. /data) and query string (e.g. pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on)
         route, _, query_string = query.partition('?')
         
         # remove trailing slash from route, unless it's just /
         route = '/' + route.strip('/')
-        print('DEBUG: route = ' + route)
+        print('DEBUG: route = ', route)
         
         if query_string:
             # split out each parameter
@@ -214,7 +177,11 @@ class mini_server():
             query_parameters = {parameter.split('=')[0]: parameter.split('=')[1] for parameter in parameters}
         else:
             query_parameters = None
-        
+              
+        return method, route, query_parameters, self.form_data_gen(current_line, request_lines) if current_line[:4] == 'POST' else None, protocol
+
+    def form_data_gen(self, current_line, request_lines):
+
         # the thorny issue of POST requests...
         # an example POST request:
         #
@@ -248,12 +215,17 @@ class mini_server():
 
         # testpass
         # -----------------------------339547375120055923303780590246--
-        form_data = None
-        if request_string_lines[0][:4] == 'POST':
-            _, _, content_type = [line for line in request_string_lines if 'Content-Type' in line[:12]][0].partition(': ')
+        
+            # get Content Type (if it exists)
+            current_line, request_lines, content_type_found = self.scroll_to(current_line, request_lines, 'Content-Type')
+
+            content_type = ''
+            if content_type_found:
+                _, _, content_type = current_line.partition(': ')
 
             # if it's a multipart form (i.e. not urlencoded)
-            if content_type[:19] == 'multipart/form-data':
+            if content_type_found and content_type[:19] == 'multipart/form-data':
+                print('DEBUG: multipart data')
                 # get the boundary (i.e. the string that separates form entries)
                 boundary = content_type.partition('; ')[2][9:].strip()
                 #print('DEBUG: boundary = \n' + boundary)
@@ -261,16 +233,31 @@ class mini_server():
                 # we can throw away the first two, and last items:
                 # - the first item is everything before the first boundary
                 # - the last item is just '--' because the form items end with the boundary + '--'
-                form_items = [form_item.rstrip('--') for form_item in request_string.split(boundary)][2:-1]
-                # now we need to get a dictionary of field names and contents
-                form_data = {}
-                for form_item in form_items:
-                    key, _, value = form_item.partition('\r\n\r\n')
-                    form_data[key[40:-1]] = value.strip()
+                while boundary + '--' not in current_line:
+                    form_item_raw = ''
+                    while boundary not in current_line:
+                        form_item_raw += next(request_lines)
+                    key, _, value = form_item_raw.partition('\r\n\r\n')
+                    value = value.strip()
+                    yield key, value
+            else:
+                # can't deal with urlencoded data as there's no micropython library for decoding it
+                pass
 
-                print('DEBUG: form_data = \n' + str(form_data))
-
-        return method, route, query_parameters, form_data, protocol
+    def scroll_to(self, current_line, request_lines, begins_with):
+            #print('DEBUG: Before scroll_to current_line = ', current_line)
+            found = True
+            while current_line[:len(begins_with)] != begins_with:
+                #if current_line == '': raise ValueError('current_line empty')
+                try:
+                    current_line = next(request_lines)
+                    #print('DEBUG: current_line[:len(begins_with)] = ', current_line[:len(begins_with)])
+                    print('DEBUG: current_line = ', current_line)
+                except StopIteration:
+                    found = False
+                    break
+            print('DEBUG: After scroll_to current_line = ', current_line)
+            return current_line, request_lines, found
 
     def __get_handlers(self, route: str):
         # check all route/handler definitions for the one that contain this route
@@ -288,3 +275,61 @@ class mini_server():
             route_handlers = (self.not_found_response,)
 
         return route_handlers
+
+    def add_route(self, route: str, handler, params: dict={}):
+        # list of tuples of routes (i.e. strings) and handlers (i.e. functions)
+        self.routes.append(
+            (route, handler, params)
+        )
+
+    def add_callback(self, event: str, callback: tuple) -> None:
+        # add callback function to the list for the appropriate key within the dictionary
+        self.callbacks.setdefault(event, []).append(callback)
+
+    def fire_callback(self, event, more_params={}):
+        # get the callback function and parameters, or return a dummy function
+        if event in self.callbacks.keys():
+            current_callbacks = self.callbacks[event]
+            for callback in current_callbacks:
+                # merge the params from the callback with more_params (more_params take precedence)
+                more_params.update(callback[1])
+                # fire the callback with all the parameters
+                callback[0](**more_params)
+
+    # receive up to 1024 bytes at a time and store the result as a string
+    def request_gen(self, cl, bytes=1024):
+        """
+        A generator that returns chunks of the http request
+        """
+        while True:
+            data = cl.recv(bytes)
+            #print('DEBUG: Received data...\n')
+            if len(data):
+                yield data
+            else:
+                break
+
+    def request_lines_gen(self, request, terminator='\r\n'):
+        """
+        A generator that returns the request line for line
+        """
+
+        next_line = ''
+        chunk = ''
+        
+        while True:
+            # consume chunk line by line until there are no line-breaks left
+            if terminator in chunk:
+                next_line, _, chunk = chunk.partition(terminator)
+                print('DEBUG: yielding utf-8 next_line = ', next_line)
+                yield next_line
+            else:
+                try:
+                    chunk += next(request).decode('utf-8')
+                except StopIteration as e:
+                    break
+        if len(chunk) > 0:
+            print('DEBUG: yielding utf-8 chunk = ', chunk)
+            yield chunk
+
+

@@ -9,9 +9,9 @@ def device_uuid_string():
     return binascii.b2a_base64(machine.unique_id()).decode('utf-8').strip('\n')
 
 class led_notify():
-    def __init__(self):
+    def __init__(self, led='LED'):
         # get internal LED
-        self.LED = self.get_led('LED')
+        self.LED = self.get_led(led)
         
         # define events
         self.wifi_starting_to_connect = lambda: self.LED.on()
