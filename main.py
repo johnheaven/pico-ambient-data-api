@@ -10,7 +10,6 @@ from mini_server.handlers import *
 ln = led_notify()
 
 
-
 ### GET SETTINGS ###
 # get the UUID of this machine
 pico_uuid = device_uuid_string()
@@ -42,15 +41,22 @@ except OSError:
 
 ms = mini_server(
     secrets=secrets,
-    not_found_response=('_placeholder_', not_found, {'pico_id': pico_id})
     )
 
 # add callbacks
-ms.add_callback(event='wifi_connected', callback=(lambda **kwargs: ln.wifi_connected(), {}))
-ms.add_callback(event='wifi_starting_to_connect', callback=(lambda **kwargs: ln.wifi_starting_to_connect(), {}))
-ms.add_callback(event='cant_connect', callback=(lambda **kwargs: ln.cant_connect(), {}))
-    
-# add routes and handlers
+ms.add_callback(callback_id='wifi_connected', handler=lambda **kwargs: ln.wifi_connected(), placeholder_params=('current_ssid',))
+ms.add_callback(callback_id='wifi_starting_to_connect', handler=lambda **kwargs: ln.wifi_starting_to_connect())
+ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.cant_connect())
+
+# add the "404 not found" route
+ms.add_route(
+    route='__not_found__',
+    handler=not_found,
+    params={},
+    placeholder_params=('pico_id',)
+    )
+
+# add all other routes and handlers
 ms.add_route(
     route='/data',
     handler=ambient_data_readings,
@@ -79,7 +85,8 @@ ms.add_route(
         'ambient_data': ambient_data,
         'get_settings_func': sttgs.settings_wrapper,
         'possible_sensors': sttgs.possible_sensors
-        }
+        },
+    placeholder_params=('current_ssid',)
 )
 
 ms.add_route(
@@ -88,7 +95,8 @@ ms.add_route(
     params={
         'get_settings_func': sttgs.settings_wrapper,
         'write_settings_func': sttgs.write_settings
-    }
+    },
+    placeholder_params=('form_data',)
 )
 
-ms.connect()
+ms.start()
