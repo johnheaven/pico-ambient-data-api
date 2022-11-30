@@ -63,7 +63,7 @@ def read_initial_wifi_settings():
     try:
         filename_index = [filename.lower() for filename in filenames].index('wifi.txt')
     except ValueError:
-        print('Not much to do... we don\'t have any initial wifi settings.')
+        print('Can\'t find initial wifi settings.\n\nPlease add wifi.txt to Pico, with the SSID on first line, and wifi password on second line.')
         raise ValueError
     
     initial_settings_filename = filenames[filename_index]
