@@ -52,8 +52,8 @@ ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.cant_con
 ms.add_route(
     route='__not_found__',
     handler=not_found,
-    params={},
-    placeholder_params=('pico_id',)
+    params={'pico_id': pico_id},
+    placeholder_params=tuple()
     )
 
 # add all other routes and handlers

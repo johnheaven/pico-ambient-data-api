@@ -47,8 +47,8 @@ class mini_server():
             wlan_connected = self.__connect_to_wlan(wlan, secrets)
 
         if wlan_connected:
-            current_ssid = secrets['ssid'] #type: ignore
-            print(f'Connected on {current_ssid}')
+            self.__add_placeholder_param('current_ssid', secrets['ssid'])
+            print(f'Connected on {secrets['ssid']}')
         else:
             # go to sleep for 10 minutes and try again later
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
