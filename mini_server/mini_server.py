@@ -47,8 +47,8 @@ class mini_server():
             wlan_connected = self.__connect_to_wlan(wlan, secrets)
 
         if wlan_connected:
-            self.__add_placeholder_param('current_ssid', secrets['ssid'])
-            print(f'Connected on {secrets['ssid']}')
+            print(f'Connected to {self.placeholder_params["current_ssid"]}')
+            print(f'Host IP: {self.placeholder_params["wlan_ip"]}')
         else:
             # go to sleep for 10 minutes and try again later
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
@@ -77,6 +77,15 @@ class mini_server():
         import network
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
+        # add IP as placeholder parameter - it sometimes reports 0.0.0.0 so keep trying until it comes back with a useful value
+        attempts = 5
+        while True:
+            attempts -= 5
+            wlan_ip = wlan.ifconfig()[0]
+            if wlan_ip != '0.0.0.0': break
+        
+        self.__add_placeholder_param('wlan_ip', wlan_ip)
+
         self.__fire_callback('wifi_active')
         return wlan
 
@@ -102,6 +111,8 @@ class mini_server():
         while max_wait > 0:
             if wlan.status() < 0 or wlan.status() > 3 or wlan.status() == network.STAT_GOT_IP:
                     self.add_callback('fatal_error', lambda **params: wlan.disconnect())
+                    self.__add_placeholder_param('host_ip', wlan.ifconfig)
+                    self.__add_placeholder_param('current_ssid', wlan.config('ssid'))
                     return True
             max_wait -= 5
             print(f'waiting for connection to {secrets["ssid"]}...')
