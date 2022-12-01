@@ -44,7 +44,7 @@ ms = mini_server(
     )
 
 # add callbacks
-ms.add_callback(callback_id='wifi_connected', handler=lambda **kwargs: ln.wifi_connected(), placeholder_params=('current_ssid',))
+ms.add_callback(callback_id='wifi_connected', handler=lambda **kwargs: ln.wifi_connected(), runtime_params=('current_ssid',))
 ms.add_callback(callback_id='wifi_starting_to_connect', handler=lambda **kwargs: ln.wifi_starting_to_connect())
 ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.cant_connect())
 
@@ -53,7 +53,7 @@ ms.add_route(
     route='__not_found__',
     handler=not_found,
     params={'pico_id': pico_id},
-    placeholder_params=tuple()
+    runtime_params=tuple()
     )
 
 # add all other routes and handlers
@@ -86,7 +86,7 @@ ms.add_route(
         'get_settings_func': sttgs.settings_wrapper,
         'possible_sensors': sttgs.possible_sensors
         },
-    placeholder_params=('current_ssid',)
+    runtime_params=('current_ssid',)
 )
 
 ms.add_route(
@@ -96,7 +96,7 @@ ms.add_route(
         'get_settings_func': sttgs.settings_wrapper,
         'write_settings_func': sttgs.write_settings
     },
-    placeholder_params=('form_data',)
+    runtime_params=('form_data',)
 )
 
 ms.start()

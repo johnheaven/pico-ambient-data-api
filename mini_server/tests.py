@@ -10,23 +10,23 @@ def test(correct, result):
 
 ms = mini_server([])
 
-# __add_placeholder_param
+# __add_runtime_param
 correct = {'test': 'testtext'}
-result = ms.__add_placeholder_param('test', 'testtext')
+result = ms.__add_runtime_param('test', 'testtext')
 test(correct, result)
 
 correct = {'test': 'testtext', 'test_2': [1, 2, 3]}
-result = ms.__add_placeholder_param('test_2', [1, 2, 3])
+result = ms.__add_runtime_param('test_2', [1, 2, 3])
 test(correct, result)
 
-# __get_placeholder_params
-result = ms.__get_placeholder_params(('test', 'test_2'), {'idontknow': 'whatever'})
+# __get_runtime_params
+result = ms.__get_runtime_params(('test', 'test_2'), {'idontknow': 'whatever'})
 correct = {'test': 'testtext', 'test_2': [1, 2, 3], 'idontknow': 'whatever'}
 test(correct, result)
 
 # add_callback
 dummy = lambda: True
-ms.add_callback('test', dummy, {'abc': 123}, placeholder_params=(1,2,3))
+ms.add_callback('test', dummy, {'abc': 123}, runtime_params=(1,2,3))
 result = ms.callbacks
 correct = [('test', dummy, {'abc': 123}, (1,2,3))]
 test(correct, result)
@@ -35,9 +35,9 @@ test(correct, result)
 handlers = ms.callbacks
 handlers = tuple(
     map(
-        # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and placeholder_params with a merged dict of the two)
-        # ... but with placeholder_params now a dictionary with the placeholders filled in
-        lambda handler: handler[:-2] + (ms.__get_placeholder_params(keys=handler[-1], merge=handler[-2]),),
+        # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and runtime_params with a merged dict of the two)
+        # ... but with runtime_params now a dictionary with the placeholders filled in
+        lambda handler: handler[:-2] + (ms.__get_runtime_params(keys=handler[-1], merge=handler[-2]),),
         handlers
         )
     )

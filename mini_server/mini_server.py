@@ -13,7 +13,7 @@ class mini_server():
         self.not_found_response = tuple()
         
         # placeholder params which can be passed to callbacks when they are available
-        self.placeholder_params = {}
+        self.runtime_params = {}
 
         # wifi connection data/setup
         # TODO: write a method to configure this
@@ -47,8 +47,8 @@ class mini_server():
             wlan_connected = self.__connect_to_wlan(wlan, secrets)
 
         if wlan_connected:
-            print(f'Connected to {self.placeholder_params["current_ssid"]}')
-            print(f'Host IP: {self.placeholder_params["wlan_ip"]}')
+            print(f'Connected to {self.runtime_params["current_ssid"]}')
+            print(f'Host IP: {self.runtime_params["wlan_ip"]}')
         else:
             # go to sleep for 10 minutes and try again later
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
@@ -84,7 +84,7 @@ class mini_server():
             wlan_ip = wlan.ifconfig()[0]
             if wlan_ip != '0.0.0.0': break
         
-        self.__add_placeholder_param('wlan_ip', wlan_ip)
+        self.__add_runtime_param('wlan_ip', wlan_ip)
 
         self.__fire_callback('wifi_active')
         return wlan
@@ -111,8 +111,8 @@ class mini_server():
         while max_wait > 0:
             if wlan.status() < 0 or wlan.status() > 3 or wlan.status() == network.STAT_GOT_IP:
                     self.add_callback('fatal_error', lambda **params: wlan.disconnect())
-                    self.__add_placeholder_param('host_ip', wlan.ifconfig)
-                    self.__add_placeholder_param('current_ssid', wlan.config('ssid'))
+                    self.__add_runtime_param('host_ip', wlan.ifconfig)
+                    self.__add_runtime_param('current_ssid', wlan.config('ssid'))
                     return True
             max_wait -= 5
             print(f'waiting for connection to {secrets["ssid"]}...')
@@ -203,9 +203,9 @@ class mini_server():
         form_data = self.__form_data_gen(current_line, request_lines) if current_line[:4] == 'POST' else None
 
         # make them available for everyone... might cause problems if concurrent requests are added!
-        self.__add_placeholder_param('route', route)
-        self.__add_placeholder_param('query_parameters', query_parameters)
-        self.__add_placeholder_param('form_data', form_data)
+        self.__add_runtime_param('route', route)
+        self.__add_runtime_param('query_parameters', query_parameters)
+        self.__add_runtime_param('form_data', form_data)
 
         return method, route, query_parameters, form_data, protocol
 
@@ -343,25 +343,25 @@ class mini_server():
         if len(handlers) == 0:
             handlers = tuple() if kind == 'callback' else (self.not_found_response,)
         
-        # add in any placeholder_params that are now available by merging them with the existing params (these are present in handler[-1])
+        # add in any runtime_params that are now available by merging them with the existing params (these are present in handler[-1])
         handlers = tuple(
             map(
-                # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and placeholder_params with a merged dict of the two)
-                # ... but with placeholder_params now a dictionary with the placeholders filled in
-                lambda handler: handler[:-2] + (self.__get_placeholder_params(keys=handler[-1], merge=handler[-2]),),
+                # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and runtime_params with a merged dict of the two)
+                # ... but with runtime_params now a dictionary with the placeholders filled in
+                lambda handler: handler[:-2] + (self.__get_runtime_params(keys=handler[-1], merge=handler[-2]),),
                 handlers
                 )
             )
 
         return handlers
 
-    def add_route(self, route: str, handler, params: dict={}, placeholder_params: tuple=tuple()):
-        return self.__add_route_or_callback(route, 'route', handler, params, placeholder_params)
+    def add_route(self, route: str, handler, params: dict={}, runtime_params: tuple=tuple()):
+        return self.__add_route_or_callback(route, 'route', handler, params, runtime_params)
 
-    def add_callback(self, callback_id: str, handler, params: dict={}, placeholder_params: tuple=tuple()):
-        return self.__add_route_or_callback(callback_id, 'callback', handler, params, placeholder_params)
+    def add_callback(self, callback_id: str, handler, params: dict={}, runtime_params: tuple=tuple()):
+        return self.__add_route_or_callback(callback_id, 'callback', handler, params, runtime_params)
 
-    def __add_route_or_callback(self, id: str, kind: str, handler, params: dict, placeholder_params: tuple):
+    def __add_route_or_callback(self, id: str, kind: str, handler, params: dict, runtime_params: tuple):
         """
         Add a route, handler and parameters i.e. a URL path and the function to be called when it is requested.
 
@@ -375,12 +375,12 @@ class mini_server():
         if kind == 'route' and id != '__not_found__':
             routes_or_callbacks = self.routes
         elif id == '__not_found__':
-            self.not_found_response = (id, handler, params, placeholder_params)
+            self.not_found_response = (id, handler, params, runtime_params)
             return
         else:
             routes_or_callbacks = self.callbacks
 
-        routes_or_callbacks.append((id, handler, params, placeholder_params))
+        routes_or_callbacks.append((id, handler, params, runtime_params))
 
     def __fire_callback(self, event):
         # get the callback function and parameters, or return a dummy function
@@ -428,11 +428,11 @@ class mini_server():
             #print('DEBUG: yielding utf-8 chunk = ', chunk)
             yield chunk
 
-    def __add_placeholder_param(self, key, value):
-        self.placeholder_params[key] = value
-        return self.placeholder_params
+    def __add_runtime_param(self, key, value):
+        self.runtime_params[key] = value
+        return self.runtime_params
     
-    def __get_placeholder_params(self, keys: tuple, merge: dict={}) -> dict:
+    def __get_runtime_params(self, keys: tuple, merge: dict={}) -> dict:
         """
         Get placeholder parameters available at the time this method is called
         and return a dictionary, optionally merged with the dictionary specified 
@@ -448,6 +448,6 @@ class mini_server():
             dict: Dictionary with available values
         """
 
-        placeholder_params = {key: self.placeholder_params.get(key, None) for key in keys}
-        placeholder_params.update(merge)
-        return placeholder_params if placeholder_params is not None else {}
+        runtime_params = {key: self.runtime_params.get(key, None) for key in keys}
+        runtime_params.update(merge)
+        return runtime_params if runtime_params is not None else {}
