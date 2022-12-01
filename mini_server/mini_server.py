@@ -34,7 +34,7 @@ class mini_server():
         if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '__not_found__'")
 
         ### CONNECT TO WLAN NETWORK ###
-        self.__fire_callback('wifi_starting_to_connect')
+        self.__fire_callback('wlan_starting_to_connect')
 
         wlan = self.__turn_on_wlan()
 
@@ -93,7 +93,7 @@ class mini_server():
             sleep_ms(5)
         
         self.__add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
-        self.__fire_callback('wifi_active')
+        self.__fire_callback('wlan_active')
         return wlan
 
     def __connect_to_wlan(self, wlan, secrets: dict, max_wait: int=30):
@@ -164,14 +164,14 @@ class mini_server():
         # get a tuple of tuples with route name, handler function, default params, runtime params
         route_handlers = self.__get_callbacks(route, kind='route')
         # substitute 404 response if empty
-        route_handlers = route_handlers if len(route_handlers) else self.not_found_response
+        route_handlers = route_handlers if len(route_handlers) else (self.not_found_response,)
         # merge the default params with any available runtime params
         route_handlers = self.__merge_runtime_params(route_handlers)
         # now (post merge) each tuple within the tuple contains only route name, handler function and all available parameters
 
         # Call each handler in succession
         for route_handler in route_handlers:
-            print('DEBUG: route_handler = ', route_handler)
+            #print('DEBUG: route_handler = ', route_handler)
             _, handler_func, handler_params = route_handler
             # execute the handler and get a header and response
             header, response_generator = handler_func(**handler_params)
@@ -188,8 +188,8 @@ class mini_server():
     
     def __parse_request(self, request):
         from helpers.bits_and_bobs import next
-        # e.g. for 'GET /update/?pico_name=test+name&ssid=blah+blah&wifi_pass=testpass&sensor=on'
 
+        # get a generator that yields lines of utf-8 decoded text
         request_lines = self.__request_lines_gen(request)
         #print('DEBUG: first 2 items in request_lines = ', next(request_lines) + '\n' + next(request_lines))
 
