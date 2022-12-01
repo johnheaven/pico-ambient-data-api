@@ -52,9 +52,10 @@ ms = mini_server(
     )
 
 # add callbacks
-ms.add_callback(callback_id='wifi_connected', handler=lambda **kwargs: ln.wifi_connected(), runtime_params=('current_ssid',))
-ms.add_callback(callback_id='wifi_starting_to_connect', handler=lambda **kwargs: ln.wifi_starting_to_connect())
-ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.cant_connect())
+ms.add_callback(callback_id='wlan_active', handler=ln.flash_once_on)
+ms.add_callback(callback_id='wlan_starting_to_connect', handler=ln.on)
+ms.add_callback(callback_id='wlan_connected', handler=ln.off)
+ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.flash_twice_off())
 
 # add the "404 not found" route
 ms.add_route(

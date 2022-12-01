@@ -79,17 +79,20 @@ class mini_server():
 
     def __turn_on_wlan(self):
         import network
+        from utime import sleep_ms
+
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
+
         # add IP as placeholder parameter - it sometimes reports 0.0.0.0 so keep trying until it comes back with a useful value
         attempts = 5
-        while True:
-            attempts -= 5
+        while True and attempts:
+            attempts -= 1
             wlan_ip = wlan.ifconfig()[0]
             if wlan_ip != '0.0.0.0': break
+            sleep_ms(5)
         
-        self.__add_runtime_param('wlan_ip', wlan_ip)
-
+        self.__add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
         self.__fire_callback('wifi_active')
         return wlan
 
@@ -114,9 +117,14 @@ class mini_server():
         # max_wait is number of seconds to wait in total
         while max_wait > 0:
             if wlan.status() < 0 or wlan.status() > 3 or wlan.status() == network.STAT_GOT_IP:
+                    # add callback to disconnect on fatal error
                     self.add_callback('fatal_error', lambda **params: wlan.disconnect())
+                    # register useful runtime parameters
                     self.__add_runtime_param('host_ip', wlan.ifconfig)
                     self.__add_runtime_param('current_ssid', wlan.config('ssid'))
+
+                    self.__fire_callback('wlan_connected')
+
                     return True
             max_wait -= 5
             print(f'waiting for connection to {secrets["ssid"]}...')

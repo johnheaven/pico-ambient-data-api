@@ -18,10 +18,11 @@ class led_notify():
         self.LED = self.get_led(led)
         
         # define events
-        self.wifi_starting_to_connect = lambda: self.LED.on()
-        self.wifi_connected = lambda: self.LED.off()
-        self.settings_read = lambda: self.flash_led(self.LED, repeats=1, final_state=False)
-        self.cant_connect = lambda: self.flash_led(self.LED, repeats=2, final_state=False)
+        self.on = lambda **kwargs: self.LED.on()
+        self.off = lambda **kwargs: self.LED.off()
+        self.flash_once_off = lambda **kwargs: self.flash_led(self.LED, repeats=0, final_state=False)
+        self.flash_once_on = lambda **kwargs: self.flash_led(self.LED, repeats=0, final_state=True)
+        self.flash_twice_off = lambda **kwargs: self.flash_led(self.LED, repeats=2, final_state=False)
 
         # define statuses
         self.no_wifi = lambda: self.flash_led(self.LED, repeats=-1, final_state=False)
@@ -32,7 +33,7 @@ class led_notify():
         return led
 
 
-    def flash_led(self, led, delay=200, repeats=5, final_state=False):
+    def flash_led(self, led, delay=200, repeats=5, final_state=False, **kwargs):
         from utime import sleep_ms
         i = 0
         while i <= repeats * 2 or repeats == -1:
