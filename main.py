@@ -1,14 +1,20 @@
 from ambient_data.ambient_data import get_ambient_data
 from mini_server.mini_server import mini_server
-from helpers.bits_and_bobs import device_uuid_string, led_notify
+from helpers.bits_and_bobs import device_uuid_string, led_notify, RuntimeParams
 from helpers import settings_management as sttgs
 from mini_server.handlers import *
+from callbacks.callbacks import Callbacks
 
 ### SETUP ###
 
 # an object for notifications via built-in LED
 ln = led_notify()
 
+# a common store for runtime parameters (i.e. parameters that are not available when starting the server but become available later)
+runtime_params = RuntimeParams()
+
+# a callbacks object for communication between server and other objects. valid kinds are 'route' and 'callback'
+callbacks = Callbacks(valid_kinds=('route', 'callback'), runtime_params_obj=runtime_params)
 
 ### GET SETTINGS ###
 # get the UUID of this machine
@@ -19,7 +25,7 @@ settings = sttgs.settings_wrapper()
 pico_id = settings['pico_id']
 sensor_type = settings['sensor']
 
-# secrets (wifi password etc.). We build this as a list for legacy reasons (too lazy to rewrite everything at the moment)
+# secrets (wifi password etc.). We build this must be a list for legacy reasons (too lazy to rewrite everything at the moment)
 secrets = [{'ssid': settings['ssid'], 'wifi_pw': settings['wifi_pw']}]
 
 # gpio (only relevant for DHT22)
@@ -41,6 +47,8 @@ except OSError:
 
 ms = mini_server(
     secrets=secrets,
+    callbacks_obj=callbacks,
+    runtime_params_obj=runtime_params
     )
 
 # add callbacks

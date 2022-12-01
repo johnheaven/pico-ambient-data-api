@@ -56,3 +56,40 @@ def next(iterable, default=None):
             return default
         else:
             raise e
+
+class RuntimeParams:
+    def __init__(self):
+        # the dictionary to store params in
+        self.runtime_params = {}
+
+    def add_runtime_param(self, key, value):
+        self.runtime_params[key] = value
+        return self.runtime_params
+
+    def get_runtime_param(self, key):
+        """Get a single runtime parameter
+
+        Args:
+            key (str): The key of the value to get
+        """
+        return self.runtime_params.get(key, None)
+    
+    def get_runtime_params_dict(self, keys: tuple, merge: dict={}) -> dict:
+        """
+        Get placeholder parameters available at the time this method is called
+        and return a dictionary, optionally merged with the dictionary specified 
+        as merge.
+
+        This is useful so callbacks and routes can receive arguments that aren't available when they're registered.
+
+        Args:
+            keys (tuple): Keys of variables to include
+            merge (dict, optional): Optional dictionary to merge with. This takes precedence in case of conflict. Defaults to {}.
+
+        Returns:
+            dict: Dictionary with available values
+        """
+
+        runtime_params = {key: self.runtime_params.get(key, None) for key in keys}
+        runtime_params.update(merge)
+        return runtime_params if runtime_params is not None else {}

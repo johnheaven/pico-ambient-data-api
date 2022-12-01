@@ -1,20 +1,24 @@
 class mini_server():
     # code for request/response adapted from https://www.raspberrypi.com/news/how-to-run-a-webserver-on-raspberry-pi-pico-w/
-    def __init__(self, secrets: list):
+    def __init__(self, secrets: list, callbacks_obj, runtime_params_obj):
         import rp2
         
         self.secrets = secrets
         
-        # routes and callbacks (they're essentially the same entity)
-        self.routes = []
-        self.callbacks = []
+        # steal methods from callback_obj
+        self.__get_callbacks = callbacks_obj.get_callbacks
+        self.__fire_callback = callbacks_obj.fire_callback
+        self.__add_route_or_callback = callbacks_obj.add_callback
+        self.__merge_runtime_params = callbacks_obj.merge_runtime_params
+
+        # steal methods from runtime_params_obj
+        self.__add_runtime_param = runtime_params_obj.add_runtime_param
+        self.__get_runtime_param = runtime_params_obj.get_runtime_param
+        self.__merge_runtime_params = callbacks_obj.merge_runtime_params
 
         # the handler for 404 not found - start() will throw an error if this is still empty by the time it's called
         self.not_found_response = tuple()
         
-        # placeholder params which can be passed to callbacks when they are available
-        self.runtime_params = {}
-
         # wifi connection data/setup
         # TODO: write a method to configure this
         rp2.country('DE')
@@ -27,7 +31,7 @@ class mini_server():
         import machine
 
         ### CHECK FOR 404 NOT FOUND ROUTE/HANDLER ###
-        if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '__not_found__")
+        if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '__not_found__'")
 
         ### CONNECT TO WLAN NETWORK ###
         self.__fire_callback('wifi_starting_to_connect')
@@ -47,8 +51,8 @@ class mini_server():
             wlan_connected = self.__connect_to_wlan(wlan, secrets)
 
         if wlan_connected:
-            print(f'Connected to {self.runtime_params["current_ssid"]}')
-            print(f'Host IP: {self.runtime_params["wlan_ip"]}')
+            print(f'Connected to {self.__get_runtime_param("current_ssid")}')
+            print(f'Host IP: {self.__get_runtime_param("wlan_ip")}')
         else:
             # go to sleep for 10 minutes and try again later
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
@@ -64,7 +68,7 @@ class mini_server():
                 cl, addr = s.accept()
                 # get a generator for the request
                 request = self.__request_gen(cl)
-                self.__handle_routes_and_callbacks(cl, request)
+                self.__handle_routes(cl, request)
                 cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
@@ -139,7 +143,7 @@ class mini_server():
 
         return s
  
-    def __handle_routes_and_callbacks(self, cl, request):
+    def __handle_routes(self, cl, request):
         
         # get route and query parameters
         parsed_request = self.__parse_request(request)
@@ -149,9 +153,15 @@ class mini_server():
         else:
             return False
 
-        # get a tuple with handler functions and the default params we need to pass in
-        route_handlers = self.__get_handlers_or_callbacks(route, kind='route')
+        # get a tuple of tuples with route name, handler function, default params, runtime params
+        route_handlers = self.__get_callbacks(route, kind='route')
+        # substitute 404 response if empty
+        route_handlers = route_handlers if len(route_handlers) else self.not_found_response
+        # merge the default params with any available runtime params
+        route_handlers = self.__merge_runtime_params(route_handlers)
+        # now (post merge) each tuple within the tuple contains only route name, handler function and all available parameters
 
+        # Call each handler in succession
         for route_handler in route_handlers:
             print('DEBUG: route_handler = ', route_handler)
             _, handler_func, handler_params = route_handler
@@ -310,87 +320,12 @@ class mini_server():
             print('DEBUG: After __scroll_to current_line = ', current_line)
             return current_line, request_lines, found
 
-    def __get_handlers_or_callbacks(self, route_or_callback: str, kind) -> tuple:
-        
-        """
-        Checks all route/callback definitions for the one that contain this route
-        and return handlers and parameters in a tuple
-
-        Args:
-            route_or_callback (str): The ID of the route or callback as a string
-            kind (str, optional): Whether it's a route or callback. Defaults to 'route'.
-
-        Returns:
-            tuple: Contains tuples, each with
-            * string: the ID of the route of callback,
-            * function: the function itself,
-            * dict: parameters that needs to be passed into it when calling it, i.e. handler_function(**params)
-        """
-        
-        # get the object to lookup the callbacks or routes in
-        lookup = self.callbacks if kind == 'callback' else self.routes
-
-        # find only the relevant handlers
-        handlers = tuple(
-            filter(
-                lambda handler: True if route_or_callback == handler[0] else False,
-                lookup
-                )
-            )
-
-        # if there aren't any registered handlers for this route, we want to substitute the "not found" handler
-        # for routes, or nothing for callbacks
-        if len(handlers) == 0:
-            handlers = tuple() if kind == 'callback' else (self.not_found_response,)
-        
-        # add in any runtime_params that are now available by merging them with the existing params (these are present in handler[-1])
-        handlers = tuple(
-            map(
-                # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and runtime_params with a merged dict of the two)
-                # ... but with runtime_params now a dictionary with the placeholders filled in
-                lambda handler: handler[:-2] + (self.__get_runtime_params(keys=handler[-1], merge=handler[-2]),),
-                handlers
-                )
-            )
-
-        return handlers
-
     def add_route(self, route: str, handler, params: dict={}, runtime_params: tuple=tuple()):
+        if route == '__not_found__': self.not_found_response = (route, handler, params, runtime_params)
         return self.__add_route_or_callback(route, 'route', handler, params, runtime_params)
 
     def add_callback(self, callback_id: str, handler, params: dict={}, runtime_params: tuple=tuple()):
         return self.__add_route_or_callback(callback_id, 'callback', handler, params, runtime_params)
-
-    def __add_route_or_callback(self, id: str, kind: str, handler, params: dict, runtime_params: tuple):
-        """
-        Add a route, handler and parameters i.e. a URL path and the function to be called when it is requested.
-
-        Args:
-            route (str): The string representation of the route (e.g. /data)
-            handler (Callable): A callable (i.e. function) to be called to handle route
-            params (dict, optional): Keywords arguments to be passed to routes in addition to any default params passed by the server. Defaults to {}.
-        """
-
-        # deal with routes and callbacks appropriately, and the special case of the "404 not found" route
-        if kind == 'route' and id != '__not_found__':
-            routes_or_callbacks = self.routes
-        elif id == '__not_found__':
-            self.not_found_response = (id, handler, params, runtime_params)
-            return
-        else:
-            routes_or_callbacks = self.callbacks
-
-        routes_or_callbacks.append((id, handler, params, runtime_params))
-
-    def __fire_callback(self, event):
-        # get the callback function and parameters, or return a dummy function
-        callbacks = self.__get_handlers_or_callbacks(route_or_callback=event, kind='callback')
-        print('DEBUG: callbacks = ', callbacks)
-        if len(callbacks) == 0: return
-        for callback in callbacks:
-            _, handler, params = callback
-            handler(**params)
-        return callbacks
 
     # receive up to 1024 bytes at a time and store the result as a string
     def __request_gen(self, cl, bytes=1024):
@@ -427,27 +362,3 @@ class mini_server():
         if len(chunk) > 0:
             #print('DEBUG: yielding utf-8 chunk = ', chunk)
             yield chunk
-
-    def __add_runtime_param(self, key, value):
-        self.runtime_params[key] = value
-        return self.runtime_params
-    
-    def __get_runtime_params(self, keys: tuple, merge: dict={}) -> dict:
-        """
-        Get placeholder parameters available at the time this method is called
-        and return a dictionary, optionally merged with the dictionary specified 
-        as merge.
-
-        This is useful so callbacks and routes can receive arguments that aren't available when they're registered.
-
-        Args:
-            keys (tuple): Keys of variables to include
-            merge (dict, optional): Optional dictionary to merge with. This takes precedence in case of conflict. Defaults to {}.
-
-        Returns:
-            dict: Dictionary with available values
-        """
-
-        runtime_params = {key: self.runtime_params.get(key, None) for key in keys}
-        runtime_params.update(merge)
-        return runtime_params if runtime_params is not None else {}
