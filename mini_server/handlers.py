@@ -5,13 +5,14 @@ def handler(f):
     return wrapped_handler
 
 def response_generator(templates: tuple, replacements: dict, read_bytes=1024, lookahead_bytes=2, template_dir='mini_server/templates/'):
-    # open the template
-    from re import compile as re_compile
-    # a simple regex to get all instances of {{token}}
+    from ure import compile as re_compile
 
+    # a simple regex to get all instances of {{token}}
     token_re = re_compile('(\{\{(\w*)\}\})')
 
     for template in templates:
+        print('DEBUG: template = ', template)
+        if not len(template): continue
         template = open(template_dir + template, mode='rb')
         # initialise chunk with arbitrary text just to make sure the loop starts
         chunk = b'whatever'
@@ -22,7 +23,7 @@ def response_generator(templates: tuple, replacements: dict, read_bytes=1024, lo
                 # look ahead by set number of bytes if necessary to get a full token
                 if chunk.count('{{') != chunk.count('}}'):
                     chunk += template.read(lookahead_bytes).decode('utf-8')
-                    print('DEBUG: incomplete tokens')
+                    #print('DEBUG: incomplete tokens')
                 else:
                     incomplete_tokens = False
             
@@ -38,7 +39,7 @@ def identify_myself(*args, **kwargs):
     unique_id = device_uuid_string()
     
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-    response = f"<html><body<><h1>{kwargs['pico_id']}</h1><p>It's me!</p><p>Unique ID: {unique_id}</p></body></html>"
+    response = (f"<html><body<><h1>{kwargs['pico_id']}</h1><p>It's me!</p><p>Unique ID: {unique_id}</p></body></html>",)
     return header, response
 
 @handler
@@ -57,7 +58,7 @@ def ambient_data_readings(*args, **kwargs):
     
     header = 'HTTP/1.0 200 OK\r\nContent-type: application/json\r\n\r\n'
     response = json.dumps(return_data)
-    return header, response
+    return header, (response,)
 
 @handler
 def not_found(*args, **kwargs):
@@ -66,19 +67,63 @@ def not_found(*args, **kwargs):
 
     header = 'HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n'
     response = f'<html><body><h1>{pico_id}</h1><p>404: Resource not found.</p></body></html>'
-    return header, response
+    return header, (response,)
 
 @handler
 def overview(*args, **kwargs):
 
-    print('DEBUG: kwargs = ', kwargs)
+    #print('DEBUG: kwargs = ', kwargs)
 
     ### INITIALISE REPLACEMENTS I.E. VALUES WE INSERT INTO TEMPLATE
     replacements = {}
 
     ### HEADER ###
+    replacements['pico_id'] = kwargs['pico_id']
+    # add current_ssid
+    replacements['current_ssid'] = kwargs['current_ssid']
+
+    ### AMBIENT DATA VALUES ###
 
     replacements['temp'], replacements['pressure'], replacements['humidity'] = next(kwargs['ambient_data'])
+
+    ### RETURN HEADER AND GENERATOR FOR RESPONSE TEMPLATE ###
+
+    # we need a header
+    header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
+    
+    return header, response_generator(templates=('header.html', 'current_data.html', 'footer.html'), replacements=replacements)
+
+@handler
+def settings(*args, **kwargs):
+    # show current settings
+    # write new settings if they are submitted (request type == post, form_data is not empty)
+
+    #print('DEBUG: list(form_data) = \n', list(kwargs['form_data']))
+
+    replacements = {}
+
+    ### SAVE SETTINGS IF SUBMITTED ###
+
+    optional_saved = ''
+
+    if kwargs['form_data'] is not None:
+        new_settings = {pair[0]: pair[1].strip() for pair in kwargs['form_data']}
+
+        new_settings['gpio'] = int(new_settings['gpio'])
+        new_settings['sda'] = int(new_settings['sda'])
+        new_settings['scl'] = int(new_settings['scl'])
+
+        kwargs['write_settings_func'](new_settings)
+
+        optional_saved = 'alert.html'
+
+        replacements['alert_text'] = 'Settings saved successfully'
+        replacements['alert_color'] = 'success'
+
+        # trigger callback
+        kwargs['fire_callback']('settings_saved')
+
+    ### HEADER ###
 
     # add current_ssid
     replacements['current_ssid'] = kwargs['current_ssid']
@@ -92,45 +137,21 @@ def overview(*args, **kwargs):
     exclude_from_fields = ['sensor']
     fields = filter(lambda item: False if item in exclude_from_fields else True, list(settings.keys()))
     
+    # data for sensor radio buttons
     possible_sensors = kwargs['possible_sensors']
+    for sensor in possible_sensors:
+        replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
     # the replacements we'll insert into the template
     replacements.update({key: (settings[key] if key in settings.keys() else '') for key in fields})
-
-    for sensor in possible_sensors:
-        replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
     # print('DEBUG: replacements = \n' + str(replacements))
 
     ### RETURN HEADER AND GENERATOR FOR RESPONSE TEMPLATE ###
 
-    # we need a header
-    header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-    
-    return header, response_generator(templates=('header.html', 'current_data.html', 'settings.html', 'footer.html'), replacements=replacements)
-
-@handler
-def save_settings(*args, **kwargs):
-    # get current settings
-    # preprocess
-    # write to disk
-
-    #print('DEBUG: list(form_data) = \n', list(kwargs['form_data']))
-
-    new_settings = {pair[0]: pair[1].strip() for pair in kwargs['form_data']}
-
-    new_settings['gpio'] = int(new_settings['gpio'])
-
-    kwargs['write_settings_func'](new_settings)
-
     header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
 
-    response = f"""
-    New settings:
-    {new_settings}
-    """
-
-    return header, response
+    return header, response_generator(templates=('header.html', optional_saved, 'settings.html', 'footer.html'), replacements=replacements)
     
 @handler
 def hard_reset(*args, **kwargs):

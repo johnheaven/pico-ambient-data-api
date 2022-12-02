@@ -18,6 +18,8 @@ def settings_wrapper():
             'pico_id': 'setup',
             'sensor': 'none',
             'gpio': 0,
+            'sda': 20,
+            'scl': 17,
             'ssid': ssid,
             'wifi_pw': wifi_pw
         }

@@ -1,8 +1,18 @@
 <!-- ### SETTINGS ### -->
+<style>
+    /* adapted from https://codepen.io/memco/pen/qAwVvD */
+    .control:checked ~ .conditional {
+				display: auto
+			}
+
+			.control:not(:checked) ~ .conditional {
+				display: none
+			}
+</style>
 <div class="row pt-3 pb-3 mb-3 text-bg-light text-center">
     <h2>Update settings</h2>
 </div>
-<form action="/save-settings" method="post" enctype="multipart/form-data" class="g-3">
+<form action="/settings" method="post" enctype="multipart/form-data" class="g-3">
     <div class="row">
         <div class="form-group mb-3">
             <legend>Device details</legend>
@@ -15,26 +25,33 @@
             <legend>Sensor type</legend>
             <label for="sensors" class="">Choose a sensor, or none if you haven't set one up yet</label>
             <fieldset name="sensor" id="sensors">
-                <div class="mb-3 form-check form-check-inline">
-                    <input type="radio" id="bme280" class="form-check-input" name="sensor" value="bme280" {{bme280_checked}}>
+                <fieldset class="mb-3 form-check">
                     <label for="bme280" class="form-label">BME280</label>
-                </div>
-                <div class="mb-3 form-check form-check-inline">
-                    <input type="radio" id="dht-22" class="form-check-input" name="sensor" value="dht22" {{dht22_checked}}>
+                    <input type="radio" id="bme280" class="form-check-input control" name="sensor" value="bme280" {{bme280_checked}}>
+                    <div class="conditional">
+                        <div class="mb-3 form-check-inline">
+                            <input type="number" id="sda" class="form-control" name="sda" value="{{sda}}" min="0" max="28">
+                            <label for="sda" class="form-label">SDA pin number (0-28)</label>
+                        </div>
+                        <div class="mb-3 form-check-inline">
+                            <input type="number" id="scl" class="form-control" name="scl" value="{{scl}}" min="0" max="28">
+                            <label for="scl" class="form-label">SCL pin number (0-28)</label>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="mb-3 form-check">
                     <label for="dht-22" class="form-label">DHT-22</label>
-                </div>
-                <div class="mb-3 form-check form-check-inline">
+                    <input type="radio" id="dht-22" class="form-check-input control" name="sensor" value="dht22" {{dht22_checked}}>
+                    <div class="mb-3 form-check conditional">
+                        <input type="number" id="gpio" class="form-control" name="gpio" value="{{gpio}}" min="0" max="28">
+                        <label for="gpio" class="form-label">GPIO pin number (0-28)</label>
+                    </div>
+                </fieldset>
+                <fieldset class="mb-3 form-check-inline">
                     <input type="radio" id="sensor_none" class="form-check-input" name="sensor" value="none" {{none_checked}}>
                     <label for="sensor_none" class="form-label">None</label>
-                </div>
+                </fieldset>
             </fieldset>
-        </div>
-        <div class="form-group mb-3 col-6">
-            <legend>GPIO pin (DHT22 only)</legend>
-            <div class="mb-3 form-check form-check-inline">
-                <input type="number" id="gpio" class="form-control" name="gpio" value="{{gpio}}" min="0" max="28">
-                <label for="gpio" class="form-label">GPIO pin number (0-28)</label>
-            </div>
         </div>
     </div> <!-- sensor settings -->
     <div class="row">

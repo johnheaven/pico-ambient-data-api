@@ -20,8 +20,16 @@ class mini_server():
         self.not_found_response = tuple()
         
         # wifi connection data/setup
-        # TODO: write a method to configure this
+        # TODO: write a method to configure this in settings
         rp2.country('DE')
+
+        # make fire_callback method available as runtime param
+        if callbacks_obj is not None: self.__add_runtime_param('fire_callback', self.__fire_callback)
+
+        # make add_runtime_param available as runtime param
+        # TODO: Wouldn't it make sense just to pass these into every handler by default?
+        if runtime_params_obj is not None:
+            self.__add_runtime_param('add_runtime_param', self.__add_runtime_param)
     
     def start(self):
         """
@@ -58,17 +66,19 @@ class mini_server():
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
             machine.deepsleep(600)
 
-        # connect to socket
+        # 3. connect to socket
         s = self.__open_socket()
 
-        # listen for connections
+        # 4. listen for connections and do things when we have them
         s.listen(3)
         while True:
             try:
                 cl, addr = s.accept()
                 # get a generator for the request
                 request = self.__request_gen(cl)
-                self.__handle_routes(cl, request)
+                # get the handlers (functions) for this request
+                handlers = self.__get_route_handlers(request)
+                self.__respond_with_route_handlers(cl, handlers)
                 cl.close()
 
             except (OSError, KeyboardInterrupt) as e:
@@ -84,13 +94,13 @@ class mini_server():
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
 
-        # add IP as placeholder parameter - it sometimes reports 0.0.0.0 so keep trying until it comes back with a useful value
-        attempts = 5
+        # add IP as placeholder parameter - it sometimes reports 0.0.0.0 so keep trying n times until it comes back with a useful value
+        attempts = 20
         while True and attempts:
             attempts -= 1
             wlan_ip = wlan.ifconfig()[0]
             if wlan_ip != '0.0.0.0': break
-            sleep_ms(5)
+            sleep_ms(10)
         
         self.__add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
         self.__fire_callback('wlan_active')
@@ -151,27 +161,50 @@ class mini_server():
 
         return s
  
-    def __handle_routes(self, cl, request):
-        
+    def __get_route_handlers(self, request) -> tuple:
+        """Gets the handlers for the route that has been requested, and substitutes the runtime params
+
+        Args:
+            cl (Socket): connection object
+            request (Iterator): the request generator
+
+        Returns:
+            tuple: The routes to be called for response
+        """
+
         # get route and query parameters
         parsed_request = self.__parse_request(request)
         # check that it hasn't returned False, meaning it failed to parse
         if parsed_request:
             _, route, _, _, _ = parsed_request
         else:
-            return False
+            # TODO A route for server error
+            route = '__not_found__'
 
         # get a tuple of tuples with route name, handler function, default params, runtime params
         route_handlers = self.__get_callbacks(route, kind='route')
+
         # substitute 404 response if empty
         route_handlers = route_handlers if len(route_handlers) else (self.not_found_response,)
+
         # merge the default params with any available runtime params
         route_handlers = self.__merge_runtime_params(route_handlers)
-        # now (post merge) each tuple within the tuple contains only route name, handler function and all available parameters
 
+        return route_handlers
+
+    def __respond_with_route_handlers(self, cl, route_handlers: tuple) -> bool:
+        """Takes a tuple with the tuples of routes/handlers. Each one gets called in succession, with the kwargs passed in.
+
+        Args:
+            cl (socket): The client connection
+            route_handlers (tuple): A tuple of tuples, each containing the route name, function, and params.
+
+        Returns:
+            bool: _description_
+        """
         # Call each handler in succession
         for route_handler in route_handlers:
-            #print('DEBUG: route_handler = ', route_handler)
+            print('DEBUG: route_handler = ', route_handler)
             _, handler_func, handler_params = route_handler
             # execute the handler and get a header and response
             header, response_generator = handler_func(**handler_params)
@@ -184,7 +217,7 @@ class mini_server():
                 sent_bytes = 0
                 while sent_bytes < total_bytes:
                     sent_bytes = cl.write(chunk[sent_bytes:])
-            return True
+        return True
     
     def __parse_request(self, request):
         from helpers.bits_and_bobs import next
@@ -208,8 +241,9 @@ class mini_server():
         
         # remove trailing slash from route, unless it's just /
         route = '/' + route.strip('/')
-        print('DEBUG: route = ', route)
+        #print('DEBUG: route = ', route)
         
+        ### QUERY PARAMETERS -> NOT PROPERLY SUPPORTED BECAUSE MICROPYTHON DOESN'T HAVE URLLIB, SO WE CAN'T DECODE THEM ###
         if query_string:
             # split out each parameter
             parameters = query_string.split('&')
@@ -218,16 +252,26 @@ class mini_server():
         else:
             query_parameters = None
         
-        form_data = self.__form_data_gen(current_line, request_lines) if current_line[:4] == 'POST' else None
+        ### POST DATA -> WE CURRENTLY ASSUME THAT ALL POST REQUESTS ARE FORMS ###
+        form_data = self.__form_data_gen(current_line, request_lines) if method == 'POST' else None
 
-        # make them available for everyone... might cause problems if concurrent requests are added!
+        # make them available for everyone... might cause problems if concurrent requests are ever added!
         self.__add_runtime_param('route', route)
         self.__add_runtime_param('query_parameters', query_parameters)
         self.__add_runtime_param('form_data', form_data)
 
         return method, route, query_parameters, form_data, protocol
 
-    def __form_data_gen(self, current_line, request_lines):
+    def __form_data_gen(self, current_line: str, request_lines):
+        """A generator for lazy-parsing form data
+
+        Args:
+            current_line (str): The current line the request_generator is on (should have been previously captured)
+            request_lines (generator): The generator for yielding the request line by line as strings
+
+        Yields:
+            (key, value) (tuple): A tuple containing key, value of form data
+        """
         import ure as re
 
         # the thorny issue of POST requests...
@@ -271,47 +315,42 @@ class mini_server():
         if content_type_found:
             _, _, content_type = current_line.partition(': ')
 
-        # if it's a multipart form (i.e. not urlencoded)
+        # if it's a multipart form (i.e. not urlencoded) then we're in business...
         if content_type_found and content_type[:19] == 'multipart/form-data':
-            print('DEBUG: multipart data')
+            #print('DEBUG: multipart data')
             # get the boundary (i.e. the string that separates form entries)
             boundary = content_type.partition('; ')[2][9:].strip()
-            print('DEBUG: boundary = \n' + boundary)
+            #print('DEBUG: boundary = \n' + boundary)
+            # the separator is different from the end... subtle but crucial
             field_sep = '--' + boundary
             form_end = '--' + boundary + '--'
-
-            # separate original request string now we know the boundary - we need to add '---' to the start
-            # we can throw away the first two, and last items:
-            # - the first item is everything before the first boundary
-            # - the last item is just '--' because the form items end with the boundary + '--'
             
             # move to first field
             current_line, request_lines, content_type_found = self.__scroll_to(current_line, request_lines, field_sep)
-            # move to first line after first boundary
-            # do until end of form data reached
             
-            # get a regex for finding the key (it's faster if we compile it once and reuse it)
+            # get a regex for finding the key
             re_key = re.compile('^Content-Disposition: form-data; name="(.*)"\s*$')
 
             while form_end not in current_line:
-                print('DEBUG: outer loop (reading fields)')
+                #print('DEBUG: outer loop (reading fields)')
                 current_line = next(request_lines)
-                print('DEBUG: current_line \n', current_line)
+                #print('DEBUG: current_line \n', current_line)
                 
                 # get key and value. key is just in first line, value is any following data (up to next boundary)
                 key = re_key.match(current_line).groups()[0]
                 current_line = next(request_lines)
                 value = ''
                 while field_sep not in current_line:
-                    print('DEBUG: inner loop (reading lines)')
+                    #print('DEBUG: inner loop (reading lines)')
                     value += current_line
                     current_line = next(request_lines)
-                print('DEBUG: yielding (key, value) = \n', (key, value))
+                #print('DEBUG: yielding (key, value) = \n', (key, value))
                 yield key, value
         else:
             # can't deal with urlencoded data as there's no micropython library for decoding it
-            # TODO: return an appropriate status code
-            pass
+            # TODO: return an appropriate status code or just ignore -> this would require rewriting
+            # TODO: the header parsing, so we don't even enter this function unless it's multipart
+            print('Urlencoded data not supported')
 
     def __scroll_to(self, current_line, request_lines, begins_with):
             #print('DEBUG: Before __scroll_to current_line = ', current_line)
@@ -320,12 +359,12 @@ class mini_server():
                 #if current_line == '': raise ValueError('current_line empty')
                 try:
                     current_line = next(request_lines)
-                    print('DEBUG: current_line[:len(begins_with)] = ', current_line[:len(begins_with)])
+                    #print('DEBUG: current_line[:len(begins_with)] = ', current_line[:len(begins_with)])
                     #print('DEBUG: current_line = ', current_line)
                 except StopIteration:
                     found = False
                     break
-            print('DEBUG: After __scroll_to current_line = ', current_line)
+            #print('DEBUG: After __scroll_to current_line = ', current_line)
             return current_line, request_lines, found
 
     def add_route(self, route: str, handler, params: dict={}, runtime_params: tuple=tuple()):
