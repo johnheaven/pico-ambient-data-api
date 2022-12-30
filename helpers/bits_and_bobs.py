@@ -94,3 +94,19 @@ class RuntimeParams:
         runtime_params = {key: self.runtime_params.get(key, None) for key in keys}
         runtime_params.update(merge)
         return runtime_params if runtime_params is not None else {}
+
+### Watchdog Timer ###
+
+def start_wdt():
+    import uasyncio, machine
+    loop = uasyncio.get_event_loop()
+    #wdt = machine.WDT(timeout=8000)
+    wdt = None
+    loop.create_task(ping_wdt(2000, wdt))
+
+async def ping_wdt(ping_freq, wdt):
+    import uasyncio
+    while True:
+        await uasyncio.sleep_ms(ping_freq)
+        #wdt.feed()
+        print('DEBUG: wdt.feed()')

@@ -1,11 +1,15 @@
 from ambient_data.ambient_data import get_ambient_data
 from mini_server.mini_server import mini_server
-from helpers.bits_and_bobs import device_uuid_string, led_notify, RuntimeParams
+from helpers.bits_and_bobs import device_uuid_string, led_notify, RuntimeParams, start_wdt
 from helpers import settings_management as sttgs
 from mini_server import handlers
 from callbacks.callbacks import Callbacks
+import gc, machine, uasyncio
 
 ### SETUP ###
+
+# set threshold for garbage collection
+gc.threshold(50000)
 
 # an object for notifications via built-in LED
 ln = led_notify()
@@ -51,7 +55,8 @@ except OSError:
 ms = mini_server(
     secrets=secrets,
     callbacks_obj=callbacks,
-    runtime_params_obj=runtime_params
+    runtime_params_obj=runtime_params,
+    wlan_country='DE'
     )
 
 # add callbacks
@@ -59,11 +64,12 @@ ms.add_callback(callback_id='wlan_active', handler=ln.flash_once_on)
 ms.add_callback(callback_id='wlan_starting_to_connect', handler=ln.on)
 ms.add_callback(callback_id='wlan_connected', handler=ln.off)
 ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.flash_twice_off())
+ms.add_callback(callback_id='fatal_error', handler=lambda _: machine.reset())
 
 
 # add the "404 not found" route
 ms.add_route(
-    route='__not_found__',
+    route='_not_found_',
     handler=handlers.not_found,
     params={'pico_id': pico_id},
     runtime_params=tuple()
@@ -111,6 +117,11 @@ ms.add_route(
     runtime_params=('form_data', 'current_ssid', 'pico_id', 'fire_callback')
 )
 
-ms.__add_runtime_param('pico_id', pico_id)
+ms._add_runtime_param('pico_id', pico_id)
+
+# start_wdt()
 
 ms.start()
+
+loop = uasyncio.get_event_loop()
+loop.run_forever()

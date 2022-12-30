@@ -1,54 +1,56 @@
+import rp2, uasyncio
+
 class mini_server():
     # code for request/response adapted from https://www.raspberrypi.com/news/how-to-run-a-webserver-on-raspberry-pi-pico-w/
-    def __init__(self, secrets: list, callbacks_obj, runtime_params_obj):
-        import rp2
-        
+    def __init__(self, secrets: list, callbacks_obj, runtime_params_obj, wlan_country, wdt_timeout=8000, wdt_ping_freq=1500):
         self.secrets = secrets
         
         # steal methods from callback_obj
-        self.__get_callbacks = callbacks_obj.get_callbacks
-        self.__fire_callback = callbacks_obj.fire_callback
-        self.__add_route_or_callback = callbacks_obj.add_callback
-        self.__merge_runtime_params = callbacks_obj.merge_runtime_params
+        self._get_callbacks = callbacks_obj.get_callbacks
+        self._fire_callback = callbacks_obj.fire_callback
+        self._add_route_or_callback = callbacks_obj.add_callback
+        self._merge_runtime_params = callbacks_obj.merge_runtime_params
 
         # steal methods from runtime_params_obj
-        self.__add_runtime_param = runtime_params_obj.add_runtime_param
-        self.__get_runtime_param = runtime_params_obj.get_runtime_param
-        self.__merge_runtime_params = callbacks_obj.merge_runtime_params
+        self._add_runtime_param = runtime_params_obj.add_runtime_param
+        self._get_runtime_param = runtime_params_obj.get_runtime_param
+        self._merge_runtime_params = callbacks_obj.merge_runtime_params
 
         # the handler for 404 not found - start() will throw an error if this is still empty by the time it's called
         self.not_found_response = tuple()
         
         # wifi connection data/setup
-        # TODO: write a method to configure this in settings
-        rp2.country('DE')
+        rp2.country(wlan_country)
+
+        self._wdt_timeout = wdt_timeout
+        self._wdt_ping_freq = wdt_ping_freq
 
         # make fire_callback method available as runtime param
-        if callbacks_obj is not None: self.__add_runtime_param('fire_callback', self.__fire_callback)
+        if callbacks_obj is not None: self._add_runtime_param('fire_callback', self._fire_callback)
 
         # make add_runtime_param available as runtime param
         # TODO: Wouldn't it make sense just to pass these into every handler by default?
         if runtime_params_obj is not None:
-            self.__add_runtime_param('add_runtime_param', self.__add_runtime_param)
+            self._add_runtime_param('add_runtime_param', self._add_runtime_param)
     
     def start(self):
         """
         The method that fires up the mighty machine that is the webserver.
         """
-
         import machine
+        from utime import sleep, time
 
         ### CHECK FOR 404 NOT FOUND ROUTE/HANDLER ###
-        if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '__not_found__'")
+        if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '_not_found_'")
 
         ### CONNECT TO WLAN NETWORK ###
-        self.__fire_callback('wlan_starting_to_connect')
+        self._fire_callback('wlan_starting_to_connect')
 
-        wlan = self.__turn_on_wlan()
+        wlan = self._turn_on_wlan()
 
         # attempt to connect to a wifi network
         # 1. get a list of (repeated) secrets - i.e. try each SSID/password combination 4 times
-        secrets_repeated = self.secrets * 4
+        secrets_repeated = [self.secrets] * 4
 
         # 2. keep cycling through them until the list is empty or we have a connection
         wlan_connected = False
@@ -56,38 +58,27 @@ class mini_server():
             print(f'Connecting to WLAN... tries {len(secrets_repeated)} left')
             secrets = self.secrets.pop()
             print(f'Attempting to connect to {secrets["ssid"]}')
-            wlan_connected = self.__connect_to_wlan(wlan, secrets)
+            wlan_connected = self._connect_to_wlan(wlan, secrets)
 
         if wlan_connected:
-            print(f'Connected to {self.__get_runtime_param("current_ssid")}')
-            print(f'Host IP: {self.__get_runtime_param("wlan_ip")}')
+            print(f'Connected to {self._get_runtime_param("current_ssid")}')
+            print(f'Host IP: {self._get_runtime_param("wlan_ip")}')
         else:
             # go to sleep for 10 minutes and try again later
             print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
             machine.deepsleep(600)
 
         # 3. connect to socket
-        s = self.__open_socket()
+        s = self._open_socket()
 
         # 4. listen for connections and do things when we have them
-        s.listen(3)
-        while True:
-            try:
-                cl, addr = s.accept()
-                # get a generator for the request
-                request = self.__request_gen(cl)
-                # get the handlers (functions) for this request
-                handlers = self.__get_route_handlers(request)
-                self.__respond_with_route_handlers(cl, handlers)
-                cl.close()
+        s.listen(1)
 
-            except (OSError, KeyboardInterrupt) as e:
-                s.close()
-                self.__fire_callback('fatal_error')
-                print('Connection closed')
-                raise e
+        loop = uasyncio.get_event_loop()
 
-    def __turn_on_wlan(self):
+        loop.create_task(self.run(s))
+
+    def _turn_on_wlan(self):
         import network
         from utime import sleep_ms
 
@@ -102,11 +93,11 @@ class mini_server():
             if wlan_ip != '0.0.0.0': break
             sleep_ms(10)
         
-        self.__add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
-        self.__fire_callback('wlan_active')
+        self._add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
+        self._fire_callback('wlan_active')
         return wlan
 
-    def __connect_to_wlan(self, wlan, secrets: dict, max_wait: int=30):
+    def _connect_to_wlan(self, wlan, secrets: dict, max_wait: int=30):
         """
         Attempts to connect to using the secrets provided. Returns True for success, False for failure.
 
@@ -130,10 +121,10 @@ class mini_server():
                     # add callback to disconnect on fatal error
                     self.add_callback('fatal_error', lambda **params: wlan.disconnect())
                     # register useful runtime parameters
-                    self.__add_runtime_param('host_ip', wlan.ifconfig)
-                    self.__add_runtime_param('current_ssid', wlan.config('ssid'))
+                    self._add_runtime_param('host_ip', wlan.ifconfig)
+                    self._add_runtime_param('current_ssid', wlan.config('ssid'))
 
-                    self.__fire_callback('wlan_connected')
+                    self._fire_callback('wlan_connected')
 
                     return True
             max_wait -= 5
@@ -147,7 +138,7 @@ class mini_server():
             print('Status code received:', wlan.status())
             return False
 
-    def __open_socket(self):
+    def _open_socket(self):
         import usocket as socket
         # Open socket
         addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
@@ -161,7 +152,27 @@ class mini_server():
 
         return s
  
-    def __get_route_handlers(self, request) -> tuple:
+    async def run(self, s):
+        while True:
+            try:
+                cl, addr = s.accept()
+                # get a generator for the request
+                request = self._request_gen(cl)
+                # get the handlers (functions) for this request
+                handlers = self._get_route_handlers(request)
+                self._respond_with_route_handlers(cl, handlers)
+                cl.close()
+
+            except (OSError, KeyboardInterrupt) as e:
+                s.close()
+                if isinstance(e, OSError):
+                    self._fire_callback('fatal_error')
+                    print(e)
+                    
+                print('Connection closed')
+                print(e)
+
+    def _get_route_handlers(self, request) -> tuple:
         """Gets the handlers for the route that has been requested, and substitutes the runtime params
 
         Args:
@@ -173,26 +184,26 @@ class mini_server():
         """
 
         # get route and query parameters
-        parsed_request = self.__parse_request(request)
+        parsed_request = self._parse_request(request)
         # check that it hasn't returned False, meaning it failed to parse
         if parsed_request:
             _, route, _, _, _ = parsed_request
         else:
             # TODO A route for server error
-            route = '__not_found__'
+            route = '_not_found_'
 
         # get a tuple of tuples with route name, handler function, default params, runtime params
-        route_handlers = self.__get_callbacks(route, kind='route')
+        route_handlers = self._get_callbacks(route, kind='route')
 
         # substitute 404 response if empty
         route_handlers = route_handlers if len(route_handlers) else (self.not_found_response,)
 
         # merge the default params with any available runtime params
-        route_handlers = self.__merge_runtime_params(route_handlers)
+        route_handlers = self._merge_runtime_params(route_handlers)
 
         return route_handlers
 
-    def __respond_with_route_handlers(self, cl, route_handlers: tuple) -> bool:
+    def _respond_with_route_handlers(self, cl, route_handlers: tuple) -> bool:
         """Takes a tuple with the tuples of routes/handlers. Each one gets called in succession, with the kwargs passed in.
 
         Args:
@@ -219,11 +230,11 @@ class mini_server():
                     sent_bytes = cl.write(chunk[sent_bytes:])
         return True
     
-    def __parse_request(self, request):
+    def _parse_request(self, request):
         from helpers.bits_and_bobs import next
 
         # get a generator that yields lines of utf-8 decoded text
-        request_lines = self.__request_lines_gen(request)
+        request_lines = self._request_lines_gen(request)
         #print('DEBUG: first 2 items in request_lines = ', next(request_lines) + '\n' + next(request_lines))
 
         # get first line from the request (generator) unless it's empty, in which case we return
@@ -253,16 +264,16 @@ class mini_server():
             query_parameters = None
         
         ### POST DATA -> WE CURRENTLY ASSUME THAT ALL POST REQUESTS ARE FORMS ###
-        form_data = self.__form_data_gen(current_line, request_lines) if method == 'POST' else None
+        form_data = self._form_data_gen(current_line, request_lines) if method == 'POST' else None
 
         # make them available for everyone... might cause problems if concurrent requests are ever added!
-        self.__add_runtime_param('route', route)
-        self.__add_runtime_param('query_parameters', query_parameters)
-        self.__add_runtime_param('form_data', form_data)
+        self._add_runtime_param('route', route)
+        self._add_runtime_param('query_parameters', query_parameters)
+        self._add_runtime_param('form_data', form_data)
 
         return method, route, query_parameters, form_data, protocol
 
-    def __form_data_gen(self, current_line: str, request_lines):
+    def _form_data_gen(self, current_line: str, request_lines):
         """A generator for lazy-parsing form data
 
         Args:
@@ -309,7 +320,7 @@ class mini_server():
         # -----------------------------339547375120055923303780590246--
         
         # get Content Type (if it exists)
-        current_line, request_lines, content_type_found = self.__scroll_to(current_line, request_lines, 'Content-Type')
+        current_line, request_lines, content_type_found = self._scroll_to(current_line, request_lines, 'Content-Type')
 
         content_type = ''
         if content_type_found:
@@ -326,7 +337,7 @@ class mini_server():
             form_end = '--' + boundary + '--'
             
             # move to first field
-            current_line, request_lines, content_type_found = self.__scroll_to(current_line, request_lines, field_sep)
+            current_line, request_lines, content_type_found = self._scroll_to(current_line, request_lines, field_sep)
             
             # get a regex for finding the key
             re_key = re.compile('^Content-Disposition: form-data; name="(.*)"\s*$')
@@ -352,8 +363,8 @@ class mini_server():
             # TODO: the header parsing, so we don't even enter this function unless it's multipart
             print('Urlencoded data not supported')
 
-    def __scroll_to(self, current_line, request_lines, begins_with):
-            #print('DEBUG: Before __scroll_to current_line = ', current_line)
+    def _scroll_to(self, current_line, request_lines, begins_with):
+            #print('DEBUG: Before _scroll_to current_line = ', current_line)
             found = True
             while current_line[:len(begins_with)] != begins_with:
                 #if current_line == '': raise ValueError('current_line empty')
@@ -364,18 +375,18 @@ class mini_server():
                 except StopIteration:
                     found = False
                     break
-            #print('DEBUG: After __scroll_to current_line = ', current_line)
+            #print('DEBUG: After _scroll_to current_line = ', current_line)
             return current_line, request_lines, found
 
     def add_route(self, route: str, handler, params: dict={}, runtime_params: tuple=tuple()):
-        if route == '__not_found__': self.not_found_response = (route, handler, params, runtime_params)
-        return self.__add_route_or_callback(route, 'route', handler, params, runtime_params)
+        if route == '_not_found_': self.not_found_response = (route, handler, params, runtime_params)
+        return self._add_route_or_callback(route, 'route', handler, params, runtime_params)
 
     def add_callback(self, callback_id: str, handler, params: dict={}, runtime_params: tuple=tuple()):
-        return self.__add_route_or_callback(callback_id, 'callback', handler, params, runtime_params)
+        return self._add_route_or_callback(callback_id, 'callback', handler, params, runtime_params)
 
     # receive up to 1024 bytes at a time and store the result as a string
-    def __request_gen(self, cl, bytes=1024):
+    def _request_gen(self, cl, bytes=1024):
         """
         A generator that returns chunks of the http request
         """
@@ -387,7 +398,7 @@ class mini_server():
             else:
                 break
 
-    def __request_lines_gen(self, request, terminator='\r\n'):
+    def _request_lines_gen(self, request, terminator='\r\n'):
         """
         A generator that returns the request line for line
         """
