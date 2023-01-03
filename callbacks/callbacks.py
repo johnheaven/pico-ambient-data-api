@@ -1,13 +1,10 @@
 class Callbacks:
-    def __init__(self, valid_kinds: tuple, runtime_params_obj):
-        # a dictionary of lists for each valid kind
-        self.callbacks = {
-            kind: [] for kind in valid_kinds
-        }
+    def __init__(self, runtime_params_obj):
 
-        self.__get_runtime_params_dict = runtime_params_obj.get_runtime_params_dict
+        self.callbacks = list()
+        self._get_runtime_params_dict = runtime_params_obj.get_runtime_params_dict
 
-    def add_callback(self, callback: str, kind: str, handler, params: dict, runtime_params: tuple):
+    def add_callback(self, callback: str, handler, params: dict, runtime_params=None):
         """
         Add a route, handler and parameters i.e. a URL path and the function to be called when it is requested.
 
@@ -17,11 +14,11 @@ class Callbacks:
             params (dict, optional): Keywords arguments to be passed to routes in addition to any default params passed by the server. Defaults to {}.
         """
 
-        self.callbacks[kind].append((callback, handler, params, runtime_params))
+        self.callbacks.append((callback, handler, params, runtime_params))
 
     def fire_callback(self, event):
         # get the callback function and parameters and fire them, or return nothing
-        callbacks = self.get_callbacks(callback=event, kind='callback')
+        callbacks = self.get_callbacks(callback=event)
         print('DEBUG: callbacks = ', callbacks)
         if len(callbacks) == 0: return
 
@@ -33,7 +30,7 @@ class Callbacks:
             handler(**params)
         return callbacks
 
-    def get_callbacks(self, callback: str, kind) -> tuple:
+    def get_callbacks(self, callback: str) -> tuple:
         
         """
         Checks all route/callback definitions for the one that contain this route
@@ -41,7 +38,6 @@ class Callbacks:
 
         Args:
             route_or_callback (str): The ID of the route or callback as a string
-            kind (str, optional): Whether it's a route or callback. Defaults to 'route'.
 
         Returns:
             tuple: Contains tuples, each with
@@ -49,17 +45,12 @@ class Callbacks:
             * function: the function itself,
             * dict: parameters that needs to be passed into it when calling it, i.e. handler_function(**params)
         """
-        # validate input – only supported kinds are 'route' or 'callback'
-        if kind not in self.callbacks.keys(): raise ValueError(f'`kind` must be in {tuple(self.callbacks.keys())} but received "{kind}"')
-
-        # get the object to lookup the callbacks in, depending on which kind we're looking for
-        lookup = self.callbacks[kind]
 
         # find only the relevant handlers
         handlers = tuple(
             filter(
                 lambda handler: True if callback == handler[0] else False,
-                lookup
+                self.callbacks
                 )
             )
         return handlers
@@ -72,7 +63,7 @@ class Callbacks:
             map(
                 # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and runtime_params with a merged dict of the two)
                 # ... but with runtime_params now a dictionary with the placeholders filled in
-                lambda handler: handler[:-2] + (self.__get_runtime_params_dict(keys=handler[-1], merge=handler[-2]),),
+                lambda handler: handler[:-2] + (self._get_runtime_params_dict(keys=handler[-1], merge=handler[-2]),),
                 handlers
                 )
             )

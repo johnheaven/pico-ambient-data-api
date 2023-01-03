@@ -1,4 +1,6 @@
 
+from phew.phew import server
+
 def handler(f):
     def wrapped_handler(*args, **kwargs):
         return f(*args, **kwargs)
@@ -60,14 +62,11 @@ def ambient_data_readings(*args, **kwargs):
     response = json.dumps(return_data)
     return header, (response,)
 
-@handler
-def not_found(*args, **kwargs):
+@server.catchall()
+def not_found(request, callbacks, runtime_params):
     # 404
-    pico_id = kwargs['pico_id']
-
-    header = 'HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n'
-    response = f'<html><body><h1>{pico_id}</h1><p>404: Resource not found.</p></body></html>'
-    return header, (response,)
+    pico_id = runtime_params.get_runtime_param('pico_id')
+    return server.Response(body=f'<html><body><h1>{pico_id}</h1><p>404: Resource not found.</p></body></html>', status=404)
 
 @handler
 def overview(*args, **kwargs):
