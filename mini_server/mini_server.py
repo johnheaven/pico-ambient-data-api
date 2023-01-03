@@ -2,8 +2,7 @@ import rp2, uasyncio
 
 class mini_server():
     # code for request/response adapted from https://www.raspberrypi.com/news/how-to-run-a-webserver-on-raspberry-pi-pico-w/
-    def __init__(self, secrets: list, callbacks_obj, runtime_params_obj, wlan_country, wdt_timeout=8000, wdt_ping_freq=1500):
-        self.secrets = secrets
+    def __init__(self, callbacks_obj, runtime_params_obj):
         
         # steal methods from callback_obj
         self._get_callbacks = callbacks_obj.get_callbacks
@@ -18,12 +17,6 @@ class mini_server():
 
         # the handler for 404 not found - start() will throw an error if this is still empty by the time it's called
         self.not_found_response = tuple()
-        
-        # wifi connection data/setup
-        rp2.country(wlan_country)
-
-        self._wdt_timeout = wdt_timeout
-        self._wdt_ping_freq = wdt_ping_freq
 
         # make fire_callback method available as runtime param
         if callbacks_obj is not None: self._add_runtime_param('fire_callback', self._fire_callback)
@@ -38,120 +31,10 @@ class mini_server():
         The method that fires up the mighty machine that is the webserver.
         """
         import machine
-        from utime import sleep, time
 
         ### CHECK FOR 404 NOT FOUND ROUTE/HANDLER ###
         if self.not_found_response == tuple(): raise RuntimeError("No 404 response defined... use mini_server.add_route() with route == '_not_found_'")
 
-        ### CONNECT TO WLAN NETWORK ###
-        self._fire_callback('wlan_starting_to_connect')
-
-        wlan = self._turn_on_wlan()
-
-        # attempt to connect to a wifi network
-        # 1. get a list of (repeated) secrets - i.e. try each SSID/password combination 4 times
-        secrets_repeated = [self.secrets] * 4
-
-        # 2. keep cycling through them until the list is empty or we have a connection
-        wlan_connected = False
-        while len(secrets_repeated) > 0 and wlan_connected == False:
-            print(f'Connecting to WLAN... tries {len(secrets_repeated)} left')
-            secrets = self.secrets.pop()
-            print(f'Attempting to connect to {secrets["ssid"]}')
-            wlan_connected = self._connect_to_wlan(wlan, secrets)
-
-        if wlan_connected:
-            print(f'Connected to {self._get_runtime_param("current_ssid")}')
-            print(f'Host IP: {self._get_runtime_param("wlan_ip")}')
-        else:
-            # go to sleep for 10 minutes and try again later
-            print(f'Couldn\'t connect so sleeping for 10 mins before restarting...')
-            machine.deepsleep(600)
-
-        # 3. connect to socket
-        s = self._open_socket()
-
-        # 4. listen for connections and do things when we have them
-        s.listen(1)
-
-        loop = uasyncio.get_event_loop()
-
-        loop.create_task(self.run(s))
-
-    def _turn_on_wlan(self):
-        import network
-        from utime import sleep_ms
-
-        wlan = network.WLAN(network.STA_IF)
-        wlan.active(True)
-
-        # add IP as placeholder parameter - it sometimes reports 0.0.0.0 so keep trying n times until it comes back with a useful value
-        attempts = 20
-        while True and attempts:
-            attempts -= 1
-            wlan_ip = wlan.ifconfig()[0]
-            if wlan_ip != '0.0.0.0': break
-            sleep_ms(10)
-        
-        self._add_runtime_param('wlan_ip', wlan_ip) #type: ignore "possibly unbound" variable error
-        self._fire_callback('wlan_active')
-        return wlan
-
-    def _connect_to_wlan(self, wlan, secrets: dict, max_wait: int=30):
-        """
-        Attempts to connect to using the secrets provided. Returns True for success, False for failure.
-
-        Args:
-            wlan (WLAN object): The WLAN object returned when connecting to socket
-            secrets (dict): WLAN credentials in format {'ssid': [SSID], 'wifi_pw': [WIFI PASSWORD]}
-            max_wait (int, optional): Maximum time to wait in seconds before timing out. Defaults to 30.
-
-        Returns:
-            bool: True for success, False for failure
-        """
-        import network
-        import utime
-        import machine
-
-        # connect to the ssid
-        wlan.connect(secrets['ssid'], secrets['wifi_pw'])
-        # max_wait is number of seconds to wait in total
-        while max_wait > 0:
-            if wlan.status() < 0 or wlan.status() > 3 or wlan.status() == network.STAT_GOT_IP:
-                    # add callback to disconnect on fatal error
-                    self.add_callback('fatal_error', lambda **params: wlan.disconnect())
-                    # register useful runtime parameters
-                    self._add_runtime_param('host_ip', wlan.ifconfig)
-                    self._add_runtime_param('current_ssid', wlan.config('ssid'))
-
-                    self._fire_callback('wlan_connected')
-
-                    return True
-            max_wait -= 5
-            print(f'waiting for connection to {secrets["ssid"]}...')
-            print(f'status = {wlan.status()}')
-            utime.sleep(5)
-
-        if wlan.status() != network.STAT_GOT_IP:
-            # something went wrong
-            print('Couldn\'t connect ...')
-            print('Status code received:', wlan.status())
-            return False
-
-    def _open_socket(self):
-        import usocket as socket
-        # Open socket
-        addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
-        s = socket.socket()
-        
-        # Without SO.REUSEADDDR, you get an OSError: [Errno 98] EADDRINUSE error which is a pain when restarting during debugging. 
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(addr)
-
-        print('listening on', addr)
-
-        return s
- 
     async def run(self, s):
         while True:
             try:
@@ -230,7 +113,7 @@ class mini_server():
                     sent_bytes = cl.write(chunk[sent_bytes:])
         return True
     
-    def _parse_request(self, request):
+    async def _parse_request(self, request):
         from helpers.bits_and_bobs import next
 
         # get a generator that yields lines of utf-8 decoded text

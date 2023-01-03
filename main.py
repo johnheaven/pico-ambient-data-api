@@ -1,6 +1,7 @@
 from ambient_data.ambient_data import get_ambient_data
 from mini_server.mini_server import mini_server
 from helpers.bits_and_bobs import device_uuid_string, led_notify, RuntimeParams, start_wdt
+from wlan.wlan import turn_on_wlan, connect_to_network, open_socket
 from helpers import settings_management as sttgs
 from mini_server import handlers
 from callbacks.callbacks import Callbacks
@@ -38,7 +39,6 @@ gpio = settings['gpio']
 # sda and sdl (BME280 only)
 sda_pin, scl_pin = settings['sda'], settings['scl']
 
-
 ### GET SENSOR DATA GENERATOR ###
 
 # get a generator to yield readings one at a time – revert sensor to 'none' if we get an IOError
@@ -50,21 +50,36 @@ except OSError:
     settings['sensor'] = 'none'
     sttgs.write_settings(settings)
 
+# add callbacks
+callbacks.add_callback(callback='wlan_active', kind='callback', handler=ln.flash_once_on, params={}, runtime_params=tuple())
+callbacks.add_callback(callback='wlan_starting_to_connect', kind='callback', handler=ln.on, params={}, runtime_params=tuple())
+callbacks.add_callback(callback='wlan_connected', kind='callback', handler=ln.off, params={}, runtime_params=tuple())
+callbacks.add_callback(callback='cant_connect', kind='callback', handler=lambda **kwargs: ln.flash_twice_off(), params={}, runtime_params=tuple())
+callbacks.add_callback(callback='fatal_error', kind='callback', handler=lambda _: machine.reset(), params={}, runtime_params=tuple())
+
+### START WIFI AND CONNECT TO NETWORK ###
+
+turn_on_wlan(callbacks, runtime_params)
+connect_to_network(secrets, callbacks, runtime_params)
+
+### START LISTENING ###
+
+async def rq_hr(reader, writer):
+    header = await reader.readline()
+    print(header)
+    writer.write('hey there!')
+
+loop = uasyncio.get_event_loop()
+loop.create_task(uasyncio.start_server(rq_hr, host='0.0.0.0', port=80))
+loop.run_forever()
+
 ### INSTANTIATE THE SERVER AND SET IT UP ###
 
 ms = mini_server(
-    secrets=secrets,
     callbacks_obj=callbacks,
     runtime_params_obj=runtime_params,
-    wlan_country='DE'
     )
 
-# add callbacks
-ms.add_callback(callback_id='wlan_active', handler=ln.flash_once_on)
-ms.add_callback(callback_id='wlan_starting_to_connect', handler=ln.on)
-ms.add_callback(callback_id='wlan_connected', handler=ln.off)
-ms.add_callback(callback_id='cant_connect', handler=lambda **kwargs: ln.flash_twice_off())
-ms.add_callback(callback_id='fatal_error', handler=lambda _: machine.reset())
 
 
 # add the "404 not found" route
