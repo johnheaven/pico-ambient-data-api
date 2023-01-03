@@ -2,7 +2,7 @@ from phew.phew import server, connect_to_wifi
 from phew.phew.template import render_template
 
 from ambient_data.ambient_data import get_ambient_data
-from helpers.bits_and_bobs import device_uuid_string, led_notify, RuntimeParams, start_wdt
+from helpers.bits_and_bobs import device_uuid_string, led_notify, Globals, start_wdt
 from helpers import settings_management as sttgs
 import handlers
 from callbacks.callbacks import Callbacks
@@ -17,10 +17,10 @@ gc.threshold(50000)
 ln = led_notify()
 
 # a common store for runtime parameters (i.e. parameters that are not available when starting the server but become available later)
-runtime_params = RuntimeParams()
+globals = Globals()
 
 # a callbacks object for communication between server and other objects. valid kinds are 'route' and 'callback'
-callbacks = Callbacks(runtime_params_obj=runtime_params)
+callbacks = Callbacks(globals=globals)
 
 ### GET SETTINGS ###
 # get the UUID of this machine
@@ -28,7 +28,12 @@ pico_uuid = device_uuid_string()
 
 settings = sttgs.settings_wrapper()
 
-runtime_params.add_runtime_param('pico_id', settings['pico_id'])
+globals.add('pico_id', settings['pico_id'])
+globals.add('get_settings_func', sttgs.settings_wrapper)
+globals.add('write_settings_func', sttgs.write_settings)
+globals.add('possible_sensors', sttgs.possible_sensors)
+globals.add('fire_callback_func', callbacks.fire_callback)
+
 sensor_type = settings['sensor']
 
 
@@ -77,7 +82,7 @@ print('IP address: ', connect_to_wifi(settings["ssid"], settings["wifi_pw"]))
 # ms.add_route(
 #     route='/find',
 #     handler=handlers.identify_myself,
-#     runtime_params=('pico_id',)
+#     globals=('pico_id',)
 #     )
 
 # ms.add_route(
@@ -92,7 +97,7 @@ print('IP address: ', connect_to_wifi(settings["ssid"], settings["wifi_pw"]))
 #     params={
 #         'ambient_data': ambient_data_gen,
 #         },
-#     runtime_params=('current_ssid', 'pico_id')
+#     globals=('current_ssid', 'pico_id')
 # )
 
 # ms.add_route(
@@ -103,10 +108,10 @@ print('IP address: ', connect_to_wifi(settings["ssid"], settings["wifi_pw"]))
 #         'write_settings_func': sttgs.write_settings,
 #         'possible_sensors': sttgs.possible_sensors
 #     },
-#     runtime_params=('form_data', 'current_ssid', 'pico_id', 'fire_callback')
+#     globals=('form_data', 'current_ssid', 'pico_id', 'fire_callback')
 # )
 
-# ms._add_runtime_param('pico_id', pico_id)
+# ms._add('pico_id', pico_id)
 
 # # start_wdt()
 
@@ -115,4 +120,4 @@ print('IP address: ', connect_to_wifi(settings["ssid"], settings["wifi_pw"]))
 # loop = uasyncio.get_event_loop()
 # loop.run_forever()
 
-server.run(callbacks=callbacks, runtime_params=runtime_params)
+server.run(callbacks=callbacks, globals=globals)

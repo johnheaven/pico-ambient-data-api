@@ -58,26 +58,26 @@ def next(iterable, default=None):
         else:
             raise e
 
-class RuntimeParams:
+class Globals:
     def __init__(self):
-        # the dictionary to store params in
-        self.runtime_params = {}
+        # the dictionary to store globals in
+        self.globals = {}
 
-    def add_runtime_param(self, key, value):
-        self.runtime_params[key] = value
-        return self.runtime_params
+    def add(self, key, value):
+        self.globals[key] = value
+        return self.globals
 
-    def get_runtime_param(self, key):
-        """Get a single runtime parameter
+    def get(self, key):
+        """Get a single global
 
         Args:
             key (str): The key of the value to get
         """
-        return self.runtime_params.get(key, None)
+        return self.globals.get(key, None)
     
-    def get_runtime_params_dict(self, keys: tuple, merge: dict={}) -> dict:
+    def get_dict(self, keys: tuple, merge: dict={}) -> dict:
         """
-        Get placeholder parameters available at the time this method is called
+        Get globals available at the time this method is called
         and return a dictionary, optionally merged with the dictionary specified 
         as merge.
 
@@ -91,9 +91,9 @@ class RuntimeParams:
             dict: Dictionary with available values
         """
 
-        runtime_params = {key: self.runtime_params.get(key, None) for key in keys}
-        runtime_params.update(merge)
-        return runtime_params if runtime_params is not None else {}
+        globals = {key: self.globals.get(key, None) for key in keys}
+        globals.update(merge)
+        return globals if globals is not None else {}
 
 ### Watchdog Timer ###
 

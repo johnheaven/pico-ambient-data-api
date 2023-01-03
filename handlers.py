@@ -1,5 +1,6 @@
 
 from phew.phew import server
+from phew.phew.template import render_template
 
 def handler(f):
     def wrapped_handler(*args, **kwargs):
@@ -65,7 +66,7 @@ def ambient_data_readings(*args, **kwargs):
 @server.catchall()
 def not_found(request, callbacks, runtime_params):
     # 404
-    pico_id = runtime_params.get_runtime_param('pico_id')
+    pico_id = runtime_params.get('pico_id')
     return server.Response(body=f'<html><body><h1>{pico_id}</h1><p>404: Resource not found.</p></body></html>', status=404)
 
 @handler
@@ -92,12 +93,12 @@ def overview(*args, **kwargs):
     
     return header, response_generator(templates=('header.html', 'current_data.html', 'footer.html'), replacements=replacements)
 
-@handler
+@server.route('/settings', methods=['GET'])
 def settings(*args, **kwargs):
     # show current settings
     # write new settings if they are submitted (request type == post, form_data is not empty)
 
-    #print('DEBUG: list(form_data) = \n', list(kwargs['form_data']))
+    request, callbacks, runtime_params = args
 
     replacements = {}
 
@@ -105,14 +106,16 @@ def settings(*args, **kwargs):
 
     optional_saved = ''
 
-    if kwargs['form_data'] is not None:
-        new_settings = {pair[0]: pair[1].strip() for pair in kwargs['form_data']}
+    form = request.form
+    if form:
+        new_settings = {pair[0]: pair[1].strip() for pair in form}
 
         new_settings['gpio'] = int(new_settings['gpio'])
         new_settings['sda'] = int(new_settings['sda'])
         new_settings['scl'] = int(new_settings['scl'])
 
-        kwargs['write_settings_func'](new_settings)
+        # write the settings using the function provided
+        runtime_params.get('write_settings_func')(new_settings)
 
         optional_saved = 'alert.html'
 
@@ -120,37 +123,32 @@ def settings(*args, **kwargs):
         replacements['alert_color'] = 'success'
 
         # trigger callback
-        kwargs['fire_callback']('settings_saved')
+        runtime_params['fire_callback_func']('settings_saved')
 
     ### HEADER ###
 
     # add current_ssid
-    replacements['current_ssid'] = kwargs['current_ssid']
+    replacements['current_ssid'] = runtime_params.get('current_ssid')
 
     ### SETTINGS FORM
 
     # get settings from the get_settings_func passed in as a kwargs parameter
-    settings = kwargs['get_settings_func']()
+    settings = runtime_params.get('get_settings_func')()
 
     # a list of fields we need for the template. we add sensor as a special case later on
     exclude_from_fields = ['sensor']
     fields = filter(lambda item: False if item in exclude_from_fields else True, list(settings.keys()))
     
     # data for sensor radio buttons
-    possible_sensors = kwargs['possible_sensors']
+    possible_sensors = runtime_params.get('possible_sensors')
     for sensor in possible_sensors:
         replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
     # the replacements we'll insert into the template
     replacements.update({key: (settings[key] if key in settings.keys() else '') for key in fields})
 
-    # print('DEBUG: replacements = \n' + str(replacements))
-
-    ### RETURN HEADER AND GENERATOR FOR RESPONSE TEMPLATE ###
-
-    header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-
-    return header, response_generator(templates=('header.html', optional_saved, 'settings.html', 'footer.html'), replacements=replacements)
+    return render_template(template='templates/settings.html', **replacements)
+    #return header, response_generator(templates=('header.html', optional_saved, 'settings.html', 'footer.html'), replacements=replacements)
     
 @handler
 def hard_reset(*args, **kwargs):

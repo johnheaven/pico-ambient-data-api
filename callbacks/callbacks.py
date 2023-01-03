@@ -1,10 +1,10 @@
 class Callbacks:
-    def __init__(self, runtime_params_obj):
+    def __init__(self, globals):
 
         self.callbacks = list()
-        self._get_runtime_params_dict = runtime_params_obj.get_runtime_params_dict
+        self._get_globals_dict = globals.get_dict
 
-    def add_callback(self, callback: str, handler, params: dict, runtime_params=None):
+    def add_callback(self, callback: str, handler, params: dict, globals=None):
         """
         Add a route, handler and parameters i.e. a URL path and the function to be called when it is requested.
 
@@ -14,7 +14,7 @@ class Callbacks:
             params (dict, optional): Keywords arguments to be passed to routes in addition to any default params passed by the server. Defaults to {}.
         """
 
-        self.callbacks.append((callback, handler, params, runtime_params))
+        self.callbacks.append((callback, handler, params, globals))
 
     def fire_callback(self, event):
         # get the callback function and parameters and fire them, or return nothing
@@ -22,8 +22,8 @@ class Callbacks:
         print('DEBUG: callbacks = ', callbacks)
         if len(callbacks) == 0: return
 
-        # merge in any parameters that are available at runtime
-        callbacks = self.merge_runtime_params(callbacks)
+        # merge in any globals
+        callbacks = self.merge_globals(callbacks)
 
         for callback in callbacks:
             _, handler, params = callback
@@ -55,15 +55,15 @@ class Callbacks:
             )
         return handlers
 
-    def merge_runtime_params(self, handlers):
-        # expects handlers to be a tuple of (route_name: str, handler: function, params: dict, runtime_params: tuple)
-        # add in any runtime_params that are now available by merging them with the existing params (these are present in handler[-1])
+    def merge_globals(self, handlers):
+        # expects handlers to be a tuple of (route_name: str, handler: function, params: dict, globals: tuple)
+        # add in any globals that are now available by merging them with the existing params (these are present in handler[-1])
         # IMPORTANT: the input is a tuple of tuples, each containing 4 items; the output if a tuple of tuples each containing 3 values.
         handlers = tuple(
             map(
-                # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and runtime_params with a merged dict of the two)
-                # ... but with runtime_params now a dictionary with the placeholders filled in
-                lambda handler: handler[:-2] + (self._get_runtime_params_dict(keys=handler[-1], merge=handler[-2]),),
+                # both need to be tuples to add them, hence the brackets. This is essentially replacing the last two items (params and globals with a merged dict of the two)
+                # ... but with globals now a dictionary with the placeholders filled in
+                lambda handler: handler[:-2] + (self._get_globals_dict(keys=handler[-1], merge=handler[-2]),),
                 handlers
                 )
             )
