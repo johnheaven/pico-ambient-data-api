@@ -10,7 +10,7 @@ def settings_wrapper():
 
     settings = read_settings()
 
-    if settings is False:
+    if not settings:
         # cobble together settings then write them to settings file if we haven't got any
         print('reading setup wifi settings from wifi.txt')
         ssid, wifi_pw = read_initial_wifi_settings()
@@ -29,97 +29,37 @@ def settings_wrapper():
 
 def read_settings():
     """
-    Read settings from settings.json and return them. Tries 3 times.
+    Read settings from settings.json and return them.
     """
-    import json, time, os
+    import json, os
 
     # Check whether settings exist at all
     if not 'settings.json' in os.listdir():
-        return False
+        return None
 
-    attempts = 3
-    while True:
-        try:
-            with open('settings.json', mode='r') as f:
-                settings = json.load(f)
-        except OSError:
-            attempts -=1
-            if attempts:
-                print('OSError, sleeping 2s before retrying')
-                time.sleep(2)
-            else:
-                print('OSError, failed 3 times')
-                return False
-        else:
-            return settings
+    with open('settings.json', mode='r') as f:
+        settings = json.load(f)
+    return settings
 
-def read_initial_wifi_settings():
+def read_initial_wifi_settings() -> tuple:
     """
-    Try to load wifi settings from wifi.txt.
-    Returns `ssid` and `wifi_pw`
+    Load wifi settings from wifi.txt.
+    Returns tuple of `ssid` and `wifi_pw`
     """
-    import os, machine
-    
-    # get wifi.txt regardless of capitalisation
-    filenames = os.listdir()
-    try:
-        filename_index = [filename.lower() for filename in filenames].index('wifi.txt')
-    except ValueError:
-        print('Can\'t find initial wifi settings.\n\nPlease add wifi.txt to Pico, with the SSID on first line, and wifi password on second line.')
-        raise ValueError
-    
-    initial_settings_filename = filenames[filename_index]
-    
-    with open(initial_settings_filename, 'r') as f:
-        ssid = f.readline().strip('\n')
-        wifi_pw = f.readline().strip('\n')
+    with open('wifi.txt', 'r') as f:
+        ssid = f.readline().strip()
+        wifi_pw = f.readline().strip()
     
     return ssid, wifi_pw
 
-def write_settings(settings):
+def write_settings(settings: dict) -> None:
     """
-    Serialise settings as JSON and save to file. Tries 3 times.
+    Serialise settings as JSON and save to file.
 
     Args:
         settings (dict): Dictionary containing settings to write to disk.
     """
-    import json, time
+    import json
+    with open('settings.json', mode='w') as f:
+        json.dump(settings, f)
 
-    attempts = 3
-    while True:
-        try:
-            with open('settings.json', mode='w') as f:
-                settings = json.dump(settings, f)
-        except OSError:
-            attempts -=1
-            if attempts:
-                print('OSError, sleeping 2s before retrying')
-                time.sleep(2)
-            else:
-                print('OSError, failed 3 times')
-                return False
-        else:
-            return True
-
-def delete_settings():
-    """
-    Deletes settings. Tries 3 times.
-
-    Returns:
-        bool: True if successful, False if fails
-    """
-    import os, time
-    attempts = 3
-    while True:
-        try:
-            os.remove('settings.json')
-        except OSError:
-            attempts -=1
-            if attempts:
-                print('OSError, sleeping 2s before retrying')
-                time.sleep(2)
-            else:
-                print('OSError, failed 3 times')
-                return False
-        else:
-            return True

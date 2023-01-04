@@ -1,3 +1,6 @@
+# a dictionary for sharing state between modules
+state = {}
+
 def device_uuid_string():
     """
     Gets the device's UUID as a string.
@@ -57,56 +60,3 @@ def next(iterable, default=None):
             return default
         else:
             raise e
-
-class Globals:
-    def __init__(self):
-        # the dictionary to store globals in
-        self.globals = {}
-
-    def add(self, key, value):
-        self.globals[key] = value
-        return self.globals
-
-    def get(self, key):
-        """Get a single global
-
-        Args:
-            key (str): The key of the value to get
-        """
-        return self.globals.get(key, None)
-    
-    def get_dict(self, keys: tuple, merge: dict={}) -> dict:
-        """
-        Get globals available at the time this method is called
-        and return a dictionary, optionally merged with the dictionary specified 
-        as merge.
-
-        This is useful so callbacks and routes can receive arguments that aren't available when they're registered.
-
-        Args:
-            keys (tuple): Keys of variables to include
-            merge (dict, optional): Optional dictionary to merge with. This takes precedence in case of conflict. Defaults to {}.
-
-        Returns:
-            dict: Dictionary with available values
-        """
-
-        globals = {key: self.globals.get(key, None) for key in keys}
-        globals.update(merge)
-        return globals if globals is not None else {}
-
-### Watchdog Timer ###
-
-def start_wdt():
-    import uasyncio, machine
-    loop = uasyncio.get_event_loop()
-    #wdt = machine.WDT(timeout=8000)
-    wdt = None
-    loop.create_task(ping_wdt(2000, wdt))
-
-async def ping_wdt(ping_freq, wdt):
-    import uasyncio
-    while True:
-        await uasyncio.sleep_ms(ping_freq)
-        #wdt.feed()
-        print('DEBUG: wdt.feed()')

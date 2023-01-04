@@ -1,6 +1,8 @@
+{{render_template('/templates/header.html', pico_id=pico_id, ssid=ssid)}}
+{{if alert_text: render_template('/templates/alert.html', alert_text=alert_text, alert_color=alert_color)}}
 <!-- ### SETTINGS ### -->
 <style>
-    /* adapted from https://codepen.io/memco/pen/qAwVvD */
+    /* conditional logic adapted from https://codepen.io/memco/pen/qAwVvD */
     .control:checked ~ .conditional {
 				display: auto
 			}
@@ -70,3 +72,4 @@
     </div>
 </form>
 <!-- SETTINGS END -->
+{{render_template('/templates/footer.html')}}

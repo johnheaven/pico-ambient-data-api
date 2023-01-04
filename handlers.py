@@ -1,40 +1,13 @@
 
 from phew.phew import server
 from phew.phew.template import render_template
+from phew.phew import logging
+import helpers.state as state
 
 def handler(f):
     def wrapped_handler(*args, **kwargs):
         return f(*args, **kwargs)
     return wrapped_handler
-
-def response_generator(templates: tuple, replacements: dict, read_bytes=1024, lookahead_bytes=2, template_dir='mini_server/templates/'):
-    from ure import compile as re_compile
-
-    # a simple regex to get all instances of {{token}}
-    token_re = re_compile('(\{\{(\w*)\}\})')
-
-    for template in templates:
-        print('DEBUG: template = ', template)
-        if not len(template): continue
-        template = open(template_dir + template, mode='rb')
-        # initialise chunk with arbitrary text just to make sure the loop starts
-        chunk = b'whatever'
-        while chunk:
-            chunk = template.read(read_bytes - lookahead_bytes).decode('utf-8')
-            incomplete_tokens = True
-            while incomplete_tokens:
-                # look ahead by set number of bytes if necessary to get a full token
-                if chunk.count('{{') != chunk.count('}}'):
-                    chunk += template.read(lookahead_bytes).decode('utf-8')
-                    #print('DEBUG: incomplete tokens')
-                else:
-                    incomplete_tokens = False
-            
-            # use regex to do replacement, and yield result
-            yield token_re.sub(
-                lambda token_match: str(replacements[token_match.groups()[1]]) if token_match.groups()[1] in replacements.keys() else token_match.groups()[0],
-                chunk)
-        template.close()
 
 @handler
 def identify_myself(*args, **kwargs):
@@ -45,102 +18,95 @@ def identify_myself(*args, **kwargs):
     response = (f"<html><body<><h1>{kwargs['pico_id']}</h1><p>It's me!</p><p>Unique ID: {unique_id}</p></body></html>",)
     return header, response
 
-@handler
-def ambient_data_readings(*args, **kwargs):
+@server.route(path='/data', methods=['GET'])
+def ambient_data_readings(request):
     import json
-    # kwargs['ambient_data'] is the ambient_data generator
-    # kwargs['get_settings_func'] is the function for getting current settings
 
-    settings = kwargs['get_settings_func']()
+    settings = state.state['get_settings_func']()
 
-    return_data = list(next(kwargs['ambient_data']))
+    return_data = list(next(state.state['ambient_data_gen']))
     return_data.append(settings['pico_id'])
     return_data.append(settings['sensor'])
-    return_data.append(kwargs['pico_uuid'])
+    return_data.append(state.state['pico_uuid'])
     return_data = dict(zip(('temp', 'pressure', 'humidity', 'pico_id', 'sensor', 'pico_uuid'), return_data))
     
-    header = 'HTTP/1.0 200 OK\r\nContent-type: application/json\r\n\r\n'
-    response = json.dumps(return_data)
-    return header, (response,)
+    return server.Response(body=json.dumps(return_data), headers={'Content-Type': 'application/json'})
 
 @server.catchall()
-def not_found(request, callbacks, runtime_params):
+def not_found(request):
     # 404
-    pico_id = runtime_params.get('pico_id')
+    pico_id = state.state['pico_id']
     return server.Response(body=f'<html><body><h1>{pico_id}</h1><p>404: Resource not found.</p></body></html>', status=404)
 
-@handler
-def overview(*args, **kwargs):
-
-    #print('DEBUG: kwargs = ', kwargs)
+@server.route('/', methods=['GET'])
+def overview(request):
 
     ### INITIALISE REPLACEMENTS I.E. VALUES WE INSERT INTO TEMPLATE
     replacements = {}
 
     ### HEADER ###
-    replacements['pico_id'] = kwargs['pico_id']
-    # add current_ssid
-    replacements['current_ssid'] = kwargs['current_ssid']
+    logging.debug(state)
+    replacements['pico_id'] = state.state['pico_id']
+
+    # add ssid
+    replacements['ssid'] = state.state['ssid']
 
     ### AMBIENT DATA VALUES ###
+    replacements['temp'], replacements['pressure'], replacements['humidity'] = next(state.state['ambient_data_gen'])
 
-    replacements['temp'], replacements['pressure'], replacements['humidity'] = next(kwargs['ambient_data'])
+    ### RETURN RESPONSE ###
+    return render_template(template='/templates/index.html', **replacements)
 
-    ### RETURN HEADER AND GENERATOR FOR RESPONSE TEMPLATE ###
-
-    # we need a header
-    header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-    
-    return header, response_generator(templates=('header.html', 'current_data.html', 'footer.html'), replacements=replacements)
-
-@server.route('/settings', methods=['GET'])
-def settings(*args, **kwargs):
+@server.route('/settings', methods=['GET', 'POST'])
+def settings(request):
     # show current settings
-    # write new settings if they are submitted (request type == post, form_data is not empty)
-
-    request, callbacks, runtime_params = args
+    # write new settings if they are submitted
 
     replacements = {}
 
     ### SAVE SETTINGS IF SUBMITTED ###
-
-    optional_saved = ''
-
+    
     form = request.form
-    if form:
-        new_settings = {pair[0]: pair[1].strip() for pair in form}
 
-        new_settings['gpio'] = int(new_settings['gpio'])
-        new_settings['sda'] = int(new_settings['sda'])
-        new_settings['scl'] = int(new_settings['scl'])
+    if len(form):
+        logging.info('Saving form settings')
+        new_settings = form
+        if new_settings['sensor'] in ('dht22', 'bme280'):
+            try:
+                new_settings['gpio'] = int(form['gpio'])
+                new_settings['sda'] = int(form['sda'])
+                new_settings['scl'] = int(form['scl'])
+            except ValueError as e:
+                logging.error('No GPIO/SDA/SCL pin specified')
+                print(e)
 
         # write the settings using the function provided
-        runtime_params.get('write_settings_func')(new_settings)
-
-        optional_saved = 'alert.html'
+        logging.debug(f'new settings: {form}')
+        state.state['write_settings_func'](new_settings)
 
         replacements['alert_text'] = 'Settings saved successfully'
         replacements['alert_color'] = 'success'
 
         # trigger callback
-        runtime_params['fire_callback_func']('settings_saved')
+        state.state['fire_callback_func']('settings_saved')
 
     ### HEADER ###
 
-    # add current_ssid
-    replacements['current_ssid'] = runtime_params.get('current_ssid')
+    # add ssid
+    replacements['ssid'] = state.state['ssid']
 
     ### SETTINGS FORM
 
     # get settings from the get_settings_func passed in as a kwargs parameter
-    settings = runtime_params.get('get_settings_func')()
+    settings = state.state['get_settings_func']()
+    print(settings)
 
     # a list of fields we need for the template. we add sensor as a special case later on
     exclude_from_fields = ['sensor']
     fields = filter(lambda item: False if item in exclude_from_fields else True, list(settings.keys()))
     
     # data for sensor radio buttons
-    possible_sensors = runtime_params.get('possible_sensors')
+    possible_sensors = state.state['possible_sensors']
     for sensor in possible_sensors:
         replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
@@ -150,7 +116,7 @@ def settings(*args, **kwargs):
     return render_template(template='templates/settings.html', **replacements)
     #return header, response_generator(templates=('header.html', optional_saved, 'settings.html', 'footer.html'), replacements=replacements)
     
-@handler
+@server.route('/hard-reset', methods=['GET'])
 def hard_reset(*args, **kwargs):
     import machine
     machine.reset()
