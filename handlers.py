@@ -45,7 +45,6 @@ def overview(request):
     replacements = {}
 
     ### HEADER ###
-    logging.debug(state)
     replacements['pico_id'] = state.state['pico_id']
 
     # add ssid
@@ -53,6 +52,9 @@ def overview(request):
 
     ### AMBIENT DATA VALUES ###
     replacements['temp'], replacements['pressure'], replacements['humidity'] = next(state.state['ambient_data_gen'])
+
+    replacements = {key: str(replacement) for key, replacement in replacements.items()}
+    logging.debug('replacements: ', replacements)
 
     ### RETURN RESPONSE ###
     return render_template(template='/templates/index.html', **replacements)
@@ -69,16 +71,14 @@ def settings(request):
     form = request.form
 
     if len(form):
-        logging.info('Saving form settings')
+        logging.info('Saving form settings: ', form)
         new_settings = form
-        if new_settings['sensor'] in ('dht22', 'bme280'):
-            try:
-                new_settings['gpio'] = int(form['gpio'])
-                new_settings['sda'] = int(form['sda'])
-                new_settings['scl'] = int(form['scl'])
-            except ValueError as e:
-                logging.error('No GPIO/SDA/SCL pin specified')
-                print(e)
+
+        # convert numerical to int if possible, except wifi credentials
+        for key, value in form.items():
+            if key in ('gpio', 'sda', 'scl'):
+                try: form[key] = int(value)
+                except: pass
 
         # write the settings using the function provided
         logging.debug(f'new settings: {form}')
@@ -99,22 +99,24 @@ def settings(request):
 
     # get settings from the get_settings_func passed in as a kwargs parameter
     settings = state.state['get_settings_func']()
-    print(settings)
+    logging.debug('settings to write in form: ', settings)
 
     # a list of fields we need for the template. we add sensor as a special case later on
-    exclude_from_fields = ['sensor']
-    fields = filter(lambda item: False if item in exclude_from_fields else True, list(settings.keys()))
+    fields = (key for key in settings.keys() if key != 'sensor')
     
     # data for sensor radio buttons
     possible_sensors = state.state['possible_sensors']
     for sensor in possible_sensors:
         replacements[sensor + '_checked'] = 'checked' if settings['sensor'] == sensor else ''
 
-    # the replacements we'll insert into the template
+    # the replacements we'll insert into the template - add empty strings for those that don't exist
     replacements.update({key: (settings[key] if key in settings.keys() else '') for key in fields})
 
+    replacements = {key: str(replacement) for key, replacement in replacements.items()}
+
+    logging.debug('replacements: ', replacements)
+
     return render_template(template='templates/settings.html', **replacements)
-    #return header, response_generator(templates=('header.html', optional_saved, 'settings.html', 'footer.html'), replacements=replacements)
     
 @server.route('/hard-reset', methods=['GET'])
 def hard_reset(*args, **kwargs):

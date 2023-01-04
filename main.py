@@ -76,26 +76,4 @@ callbacks.fire_callback('wlan_connected')
 
 ### INSTANTIATE THE SERVER AND SET IT UP ###
 
-# add the "404 not found" route
-
-
-# add all other routes and handlers
-# ms.add_route(
-#     route='/data',
-#     handler=handlers.ambient_data_readings,
-#     params={
-#         'ambient_data': ambient_data_gen,
-#         'get_settings_func': sttgs.settings_wrapper,
-#         'pico_uuid': pico_uuid}
-#     )
-
-# ms.add_route(
-#     route='/',
-#     handler=handlers.overview,
-#     params={
-#         'ambient_data': ambient_data_gen,
-#         },
-#     state=('current_ssid', 'pico_id')
-# )
-
 server.run()

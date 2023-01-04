@@ -27,6 +27,17 @@ def settings_wrapper():
     
     return settings
 
+def read_initial_wifi_settings() -> tuple:
+    """
+    Load wifi settings from wifi.txt.
+    Returns tuple of `ssid` and `wifi_pw`
+    """
+    with open('wifi.txt', 'r') as f:
+        ssid = f.readline().strip()
+        wifi_pw = f.readline().strip()
+    
+    return ssid, wifi_pw
+
 def read_settings():
     """
     Read settings from settings.json and return them.
@@ -41,17 +52,6 @@ def read_settings():
         settings = json.load(f)
     return settings
 
-def read_initial_wifi_settings() -> tuple:
-    """
-    Load wifi settings from wifi.txt.
-    Returns tuple of `ssid` and `wifi_pw`
-    """
-    with open('wifi.txt', 'r') as f:
-        ssid = f.readline().strip()
-        wifi_pw = f.readline().strip()
-    
-    return ssid, wifi_pw
-
 def write_settings(settings: dict) -> None:
     """
     Serialise settings as JSON and save to file.
@@ -62,4 +62,3 @@ def write_settings(settings: dict) -> None:
     import json
     with open('settings.json', mode='w') as f:
         json.dump(settings, f)
-
