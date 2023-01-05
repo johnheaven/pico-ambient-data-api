@@ -46,6 +46,7 @@ def overview(request):
 
     ### HEADER ###
     replacements['pico_id'] = state.state['pico_id']
+    replacements['current_ssid'] = state.state['current_ssid']
 
     # add ssid
     replacements['ssid'] = state.state['ssid']
@@ -54,7 +55,6 @@ def overview(request):
     replacements['temp'], replacements['pressure'], replacements['humidity'] = next(state.state['ambient_data_gen'])
 
     replacements = {key: str(replacement) for key, replacement in replacements.items()}
-    logging.debug('replacements: ', replacements)
 
     ### RETURN RESPONSE ###
     return render_template(template='/templates/index.html', **replacements)
@@ -71,7 +71,6 @@ def settings(request):
     form = request.form
 
     if len(form):
-        logging.info('Saving form settings: ', form)
         new_settings = form
 
         # convert numerical to int if possible, except wifi credentials
@@ -81,7 +80,6 @@ def settings(request):
                 except: pass
 
         # write the settings using the function provided
-        logging.debug(f'new settings: {form}')
         state.state['write_settings_func'](new_settings)
 
         replacements['alert_text'] = 'Settings saved successfully'
@@ -94,6 +92,7 @@ def settings(request):
 
     # add ssid
     replacements['ssid'] = state.state['ssid']
+    replacements['current_ssid'] = state.state['current_ssid']
 
     ### SETTINGS FORM
 

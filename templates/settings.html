@@ -1,5 +1,5 @@
-{{render_template('/templates/header.html', pico_id=pico_id, ssid=ssid)}}
-{{if alert_text: render_template('/templates/alert.html', alert_text=alert_text, alert_color=alert_color)}}
+{{render_template('/templates/header.html', pico_id=pico_id, current_ssid=current_ssid)}}
+{{render_template('/templates/alert.html', alert_text=alert_text, alert_color=alert_color) if alert_text else ''}}
 <!-- ### SETTINGS ### -->
 <style>
     /* conditional logic adapted from https://codepen.io/memco/pen/qAwVvD */

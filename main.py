@@ -48,7 +48,8 @@ def update_state_from_settings():
     logging.info('Updating state from settings')
     state.state['pico_id'] = settings['pico_id']
     state.state['wifi_pw'] = settings['wifi_pw']
-
+    state.state['current_ssid'] = settings['ssid']
+    
 # add callbacks
 callbacks.add_callback(callback='wlan_active', handler=ln.flash_once_on)
 callbacks.add_callback(callback='wlan_starting_to_connect', handler=ln.on)
