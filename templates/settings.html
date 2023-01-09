@@ -1,0 +1,75 @@
+{{render_template('/templates/header.html', pico_id=pico_id, current_ssid=current_ssid)}}
+{{render_template('/templates/alert.html', alert_text=alert_text, alert_color=alert_color) if alert_text else ''}}
+<!-- ### SETTINGS ### -->
+<style>
+    /* conditional logic adapted from https://codepen.io/memco/pen/qAwVvD */
+    .control:checked ~ .conditional {
+				display: auto
+			}
+
+			.control:not(:checked) ~ .conditional {
+				display: none
+			}
+</style>
+<div class="row pt-3 pb-3 mb-3 text-bg-light text-center">
+    <h2>Update settings</h2>
+</div>
+<form action="/settings" method="post" enctype="multipart/form-data" class="g-3">
+    <div class="row">
+        <div class="form-group mb-3">
+            <legend>Device details</legend>
+            <label for="pico_id" class="form-label">Pico name</label>
+            <input type="text" id="pico_id" class="form-control" name="pico_id" value="{{pico_id}}">
+        </div>
+    </div> <!-- device details -->
+    <div class="row">
+        <div class="form-group mb-3 col-6">
+            <legend>Sensor type</legend>
+            <label for="sensors" class="">Choose a sensor, or none if you haven't set one up yet</label>
+            <fieldset name="sensor" id="sensors">
+                <fieldset class="mb-3 form-check">
+                    <label for="bme280" class="form-label">BME280</label>
+                    <input type="radio" id="bme280" class="form-check-input control" name="sensor" value="bme280" {{bme280_checked}}>
+                    <div class="conditional">
+                        <div class="mb-3 form-check-inline">
+                            <input type="number" id="sda" class="form-control" name="sda" value="{{sda}}" min="0" max="28">
+                            <label for="sda" class="form-label">SDA pin number (0-28)</label>
+                        </div>
+                        <div class="mb-3 form-check-inline">
+                            <input type="number" id="scl" class="form-control" name="scl" value="{{scl}}" min="0" max="28">
+                            <label for="scl" class="form-label">SCL pin number (0-28)</label>
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset class="mb-3 form-check">
+                    <label for="dht-22" class="form-label">DHT-22</label>
+                    <input type="radio" id="dht-22" class="form-check-input control" name="sensor" value="dht22" {{dht22_checked}}>
+                    <div class="mb-3 form-check conditional">
+                        <input type="number" id="gpio" class="form-control" name="gpio" value="{{gpio}}" min="0" max="28">
+                        <label for="gpio" class="form-label">GPIO pin number (0-28)</label>
+                    </div>
+                </fieldset>
+                <fieldset class="mb-3 form-check-inline">
+                    <input type="radio" id="sensor_none" class="form-check-input" name="sensor" value="none" {{none_checked}}>
+                    <label for="sensor_none" class="form-label">None</label>
+                </fieldset>
+            </fieldset>
+        </div>
+    </div> <!-- sensor settings -->
+    <div class="row">
+        <legend>Wifi</legend>
+        <div class="col-6">
+            <label for="ssid" class="form-label">Wifi SSID</label>
+            <input type="text" id="ssid" class="form-control" name="ssid" value="{{ssid}}">
+        </div>
+        <div class="col-6">
+            <label for="wifi_pw" class="form-label" class="form-label">Wifi password</label>
+            <input type="password" id="wifi_pw" class="form-control" name="wifi_pw" value="{{wifi_pw}}">
+        </div>
+    </div>
+    <div class="mb-3 mt-3">
+        <button type="submit" class="btn btn-primary" value="Submit">Save</button>
+    </div>
+</form>
+<!-- SETTINGS END -->
+{{render_template('/templates/footer.html')}}

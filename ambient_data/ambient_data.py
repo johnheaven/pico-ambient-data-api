@@ -1,5 +1,5 @@
 class ambient_data_reader:
-    def __init__(self, sda_pin=0, scl_pin=1, gpio=None, sensor_type='bme280'):
+    def __init__(self, sda_pin=0, scl_pin=1, gpio=0, sensor_type='none'):
         self.sda_pin = sda_pin
         self.scl_pin = scl_pin
         self.gpio = gpio
@@ -7,11 +7,12 @@ class ambient_data_reader:
         # set the get_reading and initiate_sensor methods according to the sensor specified in sensor_type
         sensors_methods_dict = {
             'bme280': [self.__get_bme280_reading, self.__init_bme280],
-            'dht22': [self.__get_dht22_reading, self.__init_dht22]
+            'dht22': [self.__get_dht22_reading, self.__init_dht22],
+            'none': [self.__no_sensor_reading, self.__init_no_sensor]
             }
         try:
-            self.get_reading = sensors_methods_dict[sensor_type][0]
-            self.initiate_sensor = sensors_methods_dict[sensor_type][1]
+            self.get_reading = sensors_methods_dict[sensor_type][0] #type: ignore
+            self.initiate_sensor = sensors_methods_dict[sensor_type][1] #type: ignore
         except KeyError:
             # raise an error if the sensor_type isn't supported
             raise ValueError(
@@ -19,43 +20,76 @@ class ambient_data_reader:
                 )
     
     def __get_bme280_reading(self):
-        bme_data = self.bme280_sensor.read_compensated_data()
-        #temp, pressure, humidity
-        return bme_data[0] / 100, bme_data[1] / 10000, bme_data[2] / 1000
+        try:
+            bme_data = self.bme280_sensor.read_compensated_data()
+        except Exception as e:
+            print('ERROR: Couldn\'t get BME280 reading.')
+            return None, None, None
+        else:
+            #temp, pressure, humidity
+            return bme_data[0] / 100, bme_data[1] / 10000, bme_data[2] / 1000
     
     def __init_bme280(self):
         from machine import I2C, Pin
         # bme280 micropython library needs to have been installed, e.g. via Thonny
-        import bme280
+        try: 
+            import bme280 #type: ignore
+        except ImportError as e:
+            print('ERROR: BME280 library not found.')
+            return False
 
-        #initializing the I2C method 
-        i2c = I2C(
-            id=0,
-            sda=Pin(self.sda_pin),
-            scl=Pin(self.scl_pin),
-            freq=400000
-            )
-        scan_results = i2c.scan()
+        try:
+            #initializing the I2C method 
+            i2c = I2C(
+                id=0,
+                sda=Pin(self.sda_pin),
+                scl=Pin(self.scl_pin),
+                freq=400000
+                ) #type: ignore
+            scan_results = i2c.scan()
+        except:
+            print('ERROR: Couldn\'t initiate BME280')
+            return False
 
-        # Checks whether a device can be found and raises error if not
+        # Checks whether a device can be found and prints error message if not
         if len(scan_results) == 0:
-            raise IOError("No device found.")
+            print(f'ERROR: No device found with SDA {self.sda_pin}, SCL {self.scl_pin}.')
+            return False
             
         self.bme280_sensor = bme280.BME280(i2c=i2c)
         print('initiated bme280')
+        return True
 
     def __get_dht22_reading(self):
-        self.dht22_sensor.measure()
-        return self.dht22_sensor.temperature(), None, self.dht22_sensor.humidity()
+        try:
+            self.dht22_sensor.measure()
+        except Exception as e:
+            print('ERROR: Got exception when trying to read DHT22 sensor')
+            return None, None, None
+        else:
+            return self.dht22_sensor.temperature(), None, self.dht22_sensor.humidity()
 
     def __init_dht22(self):
         from machine import Pin
         from dht import DHT22
 
-        self.dht22_sensor = DHT22(Pin(self.gpio))
-        print('initiated dht22')
+        try:
+            self.dht22_sensor = DHT22(Pin(self.gpio)) #type: ignore
+        except:
+            print(f'ERROR: Got error when trying to initiate DHT22 on pin {self.gpio}')
+            return False
+        else:
+            print('initiated dht22')
+            return True
 
-def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sensor_type='bme280'):
+    def __no_sensor_reading(self):
+        return None, None, None
+
+    def __init_no_sensor(self):
+        print('No sensor configured')
+        return True
+
+def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, gpio=0, sensor_type='none'):
     """Get ambient data from specified device
 
     Args:
@@ -70,7 +104,7 @@ def get_ambient_data(sda_pin=0, scl_pin=1, iterations=1, interval_seconds=2, sen
     
     from utime import sleep
     
-    adr = ambient_data_reader(sensor_type=sensor_type, gpio=22)
+    adr = ambient_data_reader(sensor_type=sensor_type, gpio=gpio, sda_pin=sda_pin, scl_pin=scl_pin)
     adr.initiate_sensor()
 
     # Start a loop -> it's infinite if iterations == True. Otherwise stops after max number of iterations reached.

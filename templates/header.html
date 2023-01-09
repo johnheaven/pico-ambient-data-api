@@ -1,0 +1,36 @@
+<html>
+    <head>
+        <title>{{pico_id}}</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css" integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
+        <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    </head>
+    <body>
+        <header>
+            <nav class="navbar navbar-collapse navbar-dark bg-primary p-3">
+                <div class="container-fluid">
+                    <div class="navbar-brand bg-primary">
+                        <a href="/" class="navbar-brand text-bg-primary display-1"><h1 class="display-3">{{pico_id}}</h1></a>
+                        <small class="text-bg-primary">Connected on <em>{{current_ssid}}</em></small>
+                    </div>
+                        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                            <span class="navbar-toggler-icon"></span>
+                      </button>
+                      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                          <li class="nav-item">
+                            <a class="nav-link active text-bg-primary " aria-current="page" href="#">Home</a>
+                          </li>
+                          <li class="nav-item">
+                            <a class="nav-link text-bg-primary" href="/settings">Settings</a>
+                          </li>
+                          <li class="nav-item">
+                            <a class="nav-link text-bg-primary" href="/hard-reset">
+                              Hard reset
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+                </div> 
+            </nav>
+        </header>
+        <main class="container g-3 mt-3">

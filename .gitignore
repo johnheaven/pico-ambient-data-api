@@ -1,5 +1,6 @@
+.DS_Store
 settings.py
 .vscode
 .picowgo
-.DS_Store
 *.txt
+.python-version

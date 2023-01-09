@@ -36,3 +36,10 @@ Hopefully the settings are otherwise self-explanatory.
 ## Different settings for different boards
 
 If you want to differentiate several boards, e.g. for different rooms, you can have several versions of settings  (such as sensor type, name, wifi secrets). Modify the `example-settings.py` file with the UUID for each board, which you can obtain as described above. Of course you don't have to have the settings for all board on every board, but if you want to be able to copy exactly the same code to all your devices and have them work without and fiddling, this is the easiest way at the moment.
+
+## Useful resources
+
+I've done a lot of research to find the best settings at various points. Here are some of the articles I found useful.
+
+* Most robust settings for DHT-22:
+  * https://www.elektronik-kompendium.de/sites/raspberry-pi/2703031.htm
