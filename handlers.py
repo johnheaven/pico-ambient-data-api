@@ -4,20 +4,6 @@ from phew.phew.template import render_template
 from phew.phew import logging
 import helpers.state as state
 
-def handler(f):
-    def wrapped_handler(*args, **kwargs):
-        return f(*args, **kwargs)
-    return wrapped_handler
-
-@handler
-def identify_myself(*args, **kwargs):
-    from helpers.bits_and_bobs import device_uuid_string
-    unique_id = device_uuid_string()
-    
-    header = 'HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n'
-    response = (f"<html><body<><h1>{kwargs['pico_id']}</h1><p>It's me!</p><p>Unique ID: {unique_id}</p></body></html>",)
-    return header, response
-
 @server.route(path='/data', methods=['GET'])
 def ambient_data_readings(request):
     import json
