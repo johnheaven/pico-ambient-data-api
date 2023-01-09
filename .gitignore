@@ -3,4 +3,4 @@ settings.py
 .vscode
 .picowgo
 *.txt
-
+.python-version
