@@ -2,7 +2,7 @@ from phew.phew import server, connect_to_wifi
 from phew.phew import logging
 
 
-from ambient_data.ambient_data import get_ambient_data
+from ambient_data.ambient_data import AmbientData
 from helpers.bits_and_bobs import device_uuid_string, led_notify
 import helpers.state as state
 from helpers import settings_management as sttgs
@@ -29,11 +29,13 @@ logging.debug(f'Settings: {settings}')
 
 # get a generator to yield readings one at a time – revert sensor to 'none' if we get an IOError
 # and change this in the settings too
+ambient_data = AmbientData(sensor_type=settings["sensor"], gpio=settings["gpio"], sda_pin=settings["sda"], scl_pin=settings["scl"])
+
 try:
-    ambient_data_gen = get_ambient_data(iterations=True, sensor_type=settings['sensor'], gpio=settings['gpio'], sda_pin=settings['sda'], scl_pin=settings['scl'])
+    ambient_data.initiate_sensor()
 except Exception as e:
     if isinstance(e, OSError):
-        ambient_data_gen = get_ambient_data(iterations=True, sensor_type='none')
+        ambient_data = AmbientData(sensor_type="none")
         settings['sensor'] = 'none'
         sttgs.write_settings(settings)
     elif isinstance(e, KeyError):
@@ -41,7 +43,7 @@ except Exception as e:
     else:
         raise(e)
 
-state.state['ambient_data_gen'] = ambient_data_gen
+state.state["ambient_data_gen"] = ambient_data
 
 # this is a function so we can re-call it when settings get updated
 def update_state_from_settings():
