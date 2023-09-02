@@ -89,15 +89,11 @@ class AmbientData:
         print('No sensor configured')
         return True
 
-def print_ambient_data(data):
-    """Pretty prints ambient data
-
-    Args:
-        data Array of integers: An item from generator returned by get_ambient_data function
-    """
-    t, p, h = tuple(data)
-    print("Temp:", t)
-    print("Pressure: ", p)
-    print("Humidity: ", h)
-
-
+    def __str__(self):
+        """
+        Gets a new reading and pretty prints ambient data
+        """
+        t, p, h = tuple(self.__next__())
+        print("Temp:", t)
+        print("Pressure: ", p)
+        print("Humidity: ", h)
